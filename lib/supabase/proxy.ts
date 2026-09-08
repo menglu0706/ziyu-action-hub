@@ -22,6 +22,11 @@ export async function updateSession(request: NextRequest) {
   const isLogin = pathname === '/admin/login';
   if (isLogin) return response;
 
+  if (pathname === '/me' || pathname.startsWith('/me/')) {
+    const userId=data?.claims?.sub;
+    if(error||!userId){const login=request.nextUrl.clone();login.pathname='/login';login.searchParams.set('next',pathname);return NextResponse.redirect(login)}
+  }
+
   if (pathname.startsWith('/admin')) {
     const userId = data?.claims?.sub;
     if (error || !userId) {
