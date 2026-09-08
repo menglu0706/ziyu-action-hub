@@ -1,0 +1,1 @@
+import {LeaderboardClient} from '@/components/LeaderboardClient';import {repository} from '@/lib/repository';import {visualStyle} from '@/lib/visual';export const dynamic='force-dynamic';export default async function Leaderboard(){const setting=await repository.getVisualSetting('leaderboard');return <LeaderboardClient style={visualStyle(setting)}/>}

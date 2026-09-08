@@ -1,0 +1,6 @@
+import {MobileHeader} from '@/components/MobileHeader';
+import {MobileNav} from '@/components/MobileNav';
+import {CopyButton} from '@/components/CopyButton';
+import {repository} from '@/lib/repository';
+export const dynamic='force-dynamic';
+export default async function Tools(){const [links,templates]=await Promise.all([repository.getQuickLinks(),repository.getTemplates()]);return <main className="phone-shell"><MobileHeader title="快捷工具" back="/guide"/><div className="page-pad"><p className="-mt-1 text-center text-sm text-[#7890a6]">能少一步，绝不多一步。</p><h2 className="section-title">常用入口</h2><div className="card grid grid-cols-4 gap-y-5 p-4">{links.map(x=><a href={x.url} target="_blank" rel="noreferrer" key={x.id} className="text-center text-[11px] text-[#58738d] no-underline"><b className="mx-auto mb-2 grid h-11 w-11 place-items-center rounded-2xl bg-[#eaf5fc] text-lg text-[#3f87ca]">{x.icon}</b>{x.title}</a>)}</div><h2 className="section-title">今日模板</h2><div className="space-y-3">{templates.map(x=><div className="card flex items-center justify-between gap-3 p-4" key={x.id}><div><b className="text-sm">{x.type}</b><p className="mb-0 mt-2 text-xs leading-5 text-[#718aa1]">{x.content}</p></div><CopyButton text={x.content}/></div>)}</div></div><MobileNav/></main>}

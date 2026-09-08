@@ -1,0 +1,1 @@
+'use client';import {useState} from 'react';export function CompleteButton(){const [done,setDone]=useState(false);return <button className="primary w-full" onClick={()=>setDone(!done)}>{done?'已完成 ✓':'标记为完成'}</button>}
