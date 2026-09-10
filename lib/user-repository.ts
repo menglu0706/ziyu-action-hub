@@ -2,9 +2,10 @@ import {getOrCreateOwnProfile,optionalUser,requireUserIdentity} from '@/lib/auth
 import type {Task} from '@/lib/types';
 
 export type CompletionHistory={id:string;taskId:string|null;title:string;category:string;completedAt:string};
+export type TaskViewerSession=ReturnType<typeof optionalUser>;
 export function startTaskViewerSession(){return optionalUser()}
 type ViewerTask=Pick<Task,'id'|'platform'|'multi'|'completionMode'>;
-export async function getTaskViewerState(tasks:ViewerTask[],session=startTaskViewerSession()){
+export async function getTaskViewerState(tasks:ViewerTask[],session:TaskViewerSession=startTaskViewerSession()){
   const {db,user}=await session;
   if(!user||!tasks.length)return {authenticated:Boolean(user),progress:new Map<string,number>(),goals:new Map<string,number>(),completed:new Set<string>()};
   const taskIds=tasks.map(task=>task.id);const platforms=[...new Set(tasks.flatMap(task=>task.multi&&task.platform?[task.platform]:[]))];
