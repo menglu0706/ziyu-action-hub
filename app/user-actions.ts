@@ -1,6 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
+import {isPlatform} from '@/lib/platforms';
 import {requireUser} from '@/lib/auth/user';
 
 export async function completeTask(taskId:string){
@@ -35,6 +36,17 @@ export async function updateNickname(nickname:string){
   revalidatePath('/me');revalidatePath('/me/account');
 }
 export async function updateLeaderboardOptIn(enabled:boolean){const {db,user}=await requireUser('/me/account');const {error}=await db.from('profiles').update({leaderboard_opt_in:enabled}).eq('id',user.id);if(error)throw new Error('英雄榜设置保存失败');revalidatePath('/me');revalidatePath('/me/account');revalidatePath('/me/leaderboard')}
+
+export async function updatePlatformAccountCount(platform:string,count:number|null){
+  if(!isPlatform(platform))throw new Error('账号平台无效');
+  if(count!==null&&(!Number.isInteger(count)||count<1||count>10000))throw new Error('账号数量需为 1–10000');
+  const {db,user}=await requireUser('/me/account');
+  const result=count===null
+    ?await db.from('platform_account_counts').delete().eq('user_id',user.id).eq('platform',platform)
+    :await db.from('platform_account_counts').upsert({user_id:user.id,platform,account_count:count},{onConflict:'user_id,platform'});
+  if(result.error)throw new Error('平台账号数量保存失败');
+  revalidatePath('/me/account');revalidatePath('/urgent');revalidatePath('/daily');
+}
 
 export async function logout(){
   const {db}=await requireUser('/me/account');await db.auth.signOut();redirect('/login');
