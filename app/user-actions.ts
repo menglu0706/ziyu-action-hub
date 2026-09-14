@@ -34,6 +34,7 @@ export async function updateNickname(nickname:string){
   if(error)throw new Error('昵称保存失败');
   revalidatePath('/me');revalidatePath('/me/account');
 }
+export async function updateLeaderboardOptIn(enabled:boolean){const {db,user}=await requireUser('/me/account');const {error}=await db.from('profiles').update({leaderboard_opt_in:enabled}).eq('id',user.id);if(error)throw new Error('英雄榜设置保存失败');revalidatePath('/me');revalidatePath('/me/account');revalidatePath('/me/leaderboard')}
 
 export async function logout(){
   const {db}=await requireUser('/me/account');await db.auth.signOut();redirect('/login');
