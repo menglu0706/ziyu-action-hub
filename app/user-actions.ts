@@ -34,6 +34,12 @@ export async function updateNickname(nickname:string){
   if(error)throw new Error('昵称保存失败');
   revalidatePath('/me');revalidatePath('/me/account');
 }
+export async function saveAvatarUrl(){
+  const {db,user}=await requireUserIdentity('/me/account');const path=`${user.id}/avatar.webp`,baseUrl=db.storage.from('avatars').getPublicUrl(path).data.publicUrl,avatarUrl=`${baseUrl}?v=${Date.now()}`;
+  const {error}=await db.from('profiles').update({avatar_url:avatarUrl}).eq('id',user.id);
+  if(error)throw new Error('头像保存失败');
+  revalidatePath('/me');revalidatePath('/me/account');return avatarUrl;
+}
 export async function updateLeaderboardOptIn(enabled:boolean){const {db,user}=await requireUser('/me/account');const {error}=await db.from('profiles').update({leaderboard_opt_in:enabled}).eq('id',user.id);if(error)throw new Error('英雄榜设置保存失败');revalidatePath('/me');revalidatePath('/me/account');revalidatePath('/me/leaderboard')}
 
 export async function updatePlatformAccountCount(platform:string,count:number|null){
