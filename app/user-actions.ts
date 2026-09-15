@@ -2,7 +2,7 @@
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
 import {isPlatform} from '@/lib/platforms';
-import {requireUser} from '@/lib/auth/user';
+import {requireUser,requireUserIdentity} from '@/lib/auth/user';
 
 export async function completeTask(taskId:string){
   const {db}=await requireUser(`/tasks/${taskId}`);
@@ -12,10 +12,9 @@ export async function completeTask(taskId:string){
 }
 
 export async function adjustTaskProgress(taskId:string,delta:-1|1){
-  const {db}=await requireUser(`/tasks/${taskId}`);
+  const {db}=await requireUserIdentity(`/tasks/${taskId}`);
   const {data,error}=await db.rpc('adjust_task_progress',{p_task_id:taskId,p_delta:delta});
   if(error||typeof data!=='number')throw new Error('进度保存失败');
-  revalidatePath(`/tasks/${taskId}`);revalidatePath('/urgent');revalidatePath('/daily');
   return data;
 }
 
