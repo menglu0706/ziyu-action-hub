@@ -45,12 +45,11 @@ export async function updateLeaderboardOptIn(enabled:boolean){const {db,user}=aw
 export async function updatePlatformAccountCount(platform:string,count:number|null){
   if(!isPlatform(platform))throw new Error('账号平台无效');
   if(count!==null&&(!Number.isInteger(count)||count<1||count>10000))throw new Error('账号数量需为 1–10000');
-  const {db,user}=await requireUser('/me/account');
-  const result=count===null
-    ?await db.from('platform_account_counts').delete().eq('user_id',user.id).eq('platform',platform)
-    :await db.from('platform_account_counts').upsert({user_id:user.id,platform,account_count:count},{onConflict:'user_id,platform'});
-  if(result.error)throw new Error('平台账号数量保存失败');
-  revalidatePath('/me/account');revalidatePath('/urgent');revalidatePath('/daily');
+  const {db,user}=await requireUserIdentity('/me/account');
+  if(count===null){const {error}=await db.from('platform_account_counts').delete().eq('user_id',user.id).eq('platform',platform);if(error)throw new Error('平台账号数量保存失败');return null}
+  const {data,error}=await db.from('platform_account_counts').upsert({user_id:user.id,platform,account_count:count},{onConflict:'user_id,platform'}).select('account_count').single();
+  if(error||!data)throw new Error('平台账号数量保存失败');
+  return data.account_count;
 }
 
 export async function logout(){
