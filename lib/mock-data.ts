@@ -1,10 +1,10 @@
 import type {Task,VisualSetting} from './types';
 
 export const tasks:Task[]=[
-  {id:'qq-peak',title:'巅峰榜投金币',platform:'QQ音乐',category:'音乐',urgency:100,required:100,minutes:2,deadline:'2026-09-09T00:00:00+09:00',quick:'打开巅峰榜，为梓渝投出今日金币',description:'今日榜单冲刺阶段，请优先完成金币投票。',url:'https://y.qq.com',pinned:true,daily:true,multi:true,completionMode:'daily',progress:0,goal:null,steps:['打开QQ音乐','搜索梓渝','进入巅峰榜','完成投票','返回本站点击完成']},
-  {id:'weibo-checkin',title:'超话签到与互动',platform:'微博',category:'数据',urgency:82,required:80,minutes:3,deadline:'2026-09-10T22:00:00+09:00',quick:'签到后完成一条有效互动',description:'完成今日超话签到，并选择一条内容互动。',url:'https://weibo.com',pinned:false,daily:true,multi:true,completionMode:'daily',progress:0,goal:null,steps:['打开微博','进入梓渝超话','完成签到','选择内容互动']},
-  {id:'brand-support',title:'品牌内容支持',platform:'微博',category:'商务',urgency:66,required:75,minutes:5,deadline:'2026-09-12T20:00:00+09:00',quick:'进入品牌原帖完成自然互动',description:'前往品牌发布内容，完成自然、真实的互动。',url:'https://weibo.com',pinned:false,daily:true,multi:false,completionMode:'daily',progress:0,goal:null,steps:['打开品牌原帖','阅读内容','完成自然互动']},
-  {id:'daily-play',title:'歌曲日常播放',platform:'网易云音乐',category:'日常',urgency:40,required:55,minutes:10,deadline:'2026-09-30T23:00:00+09:00',quick:'按歌单顺序正常播放',description:'使用官方音乐平台正常收听。',url:'https://music.163.com',pinned:false,daily:true,multi:false,completionMode:'daily',progress:0,goal:null,steps:['打开音乐平台','进入推荐歌单','正常播放']}
+  {id:'qq-peak',title:'巅峰榜投金币',platform:'QQ音乐',category:'音乐',urgency:100,required:100,minutes:2,deadline:'2026-09-09T00:00:00+09:00',quick:'打开巅峰榜，为梓渝投出今日金币',description:'今日榜单冲刺阶段，请优先完成金币投票。',recommendedCopy:'',url:'https://y.qq.com',pinned:true,daily:true,multi:true,completionMode:'daily',urgentSortPosition:null,progress:0,goal:null,steps:['打开QQ音乐','搜索梓渝','进入巅峰榜','完成投票','返回本站点击完成']},
+  {id:'weibo-checkin',title:'超话签到与互动',platform:'微博',category:'数据',urgency:82,required:80,minutes:3,deadline:'2026-09-10T22:00:00+09:00',quick:'签到后完成一条有效互动',description:'完成今日超话签到，并选择一条内容互动。',recommendedCopy:'',url:'https://weibo.com',pinned:false,daily:true,multi:true,completionMode:'daily',urgentSortPosition:null,progress:0,goal:null,steps:['打开微博','进入梓渝超话','完成签到','选择内容互动']},
+  {id:'brand-support',title:'品牌内容支持',platform:'微博',category:'商务',urgency:66,required:75,minutes:5,deadline:'2026-09-12T20:00:00+09:00',quick:'进入品牌原帖完成自然互动',description:'前往品牌发布内容，完成自然、真实的互动。',recommendedCopy:'',url:'https://weibo.com',pinned:false,daily:true,multi:false,completionMode:'daily',urgentSortPosition:null,progress:0,goal:null,steps:['打开品牌原帖','阅读内容','完成自然互动']},
+  {id:'daily-play',title:'歌曲日常播放',platform:'网易云音乐',category:'日常',urgency:40,required:55,minutes:10,deadline:'2026-09-30T23:00:00+09:00',quick:'按歌单顺序正常播放',description:'使用官方音乐平台正常收听。',recommendedCopy:'',url:'https://music.163.com',pinned:false,daily:true,multi:false,completionMode:'daily',urgentSortPosition:null,progress:0,goal:null,steps:['打开音乐平台','进入推荐歌单','正常播放']}
 ];
 
 export const guides=[
@@ -15,4 +15,4 @@ export const guides=[
   {id:'new',title:'新手必看',summary:'从最重要的一件事开始',body:'先完成紧急页置顶任务，再按自己的时间选择日常任务。'}
 ];
 
-export const visualSettings:VisualSetting[]=['全局默认','紧急页','日常页','物料页','攻略页','养渝页','英雄榜','登录 / 欢迎页'].map((module,i)=>({module,enabled:i===0,imageUrl:'',position:'center top',size:'cover',overlay:0,decorativeText:i===0?'More for ZIYU':'',textEnabled:i===0}));
+export const visualSettings:VisualSetting[]=['全局默认','紧急页','日常页','物料页','攻略页','养渝页','英雄榜','登录 / 欢迎页'].map((module,i)=>({module,enabled:i===0,imageUrl:'',position:'center top',size:'cover',overlay:0,decorativeText:i===0?'All for ZIYU':'',textEnabled:i===0}));

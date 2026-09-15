@@ -19,12 +19,12 @@ export async function requireUserIdentity(next='/me'){
 }
 
 export async function getOrCreateOwnProfile({db,user}:Awaited<ReturnType<typeof requireUserIdentity>>){
-  let {data:profile}=await db.from('profiles').select('id,nickname,avatar_url,timezone').eq('id',user.id).maybeSingle();
+  let {data:profile}=await db.from('profiles').select('id,nickname,avatar_url,timezone,leaderboard_opt_in').eq('id',user.id).maybeSingle();
   if(!profile){
-    const candidate={id:user.id,nickname:fallbackNickname(user),avatar_url:null,timezone:null};
-    const inserted=await db.from('profiles').insert(candidate).select('id,nickname,avatar_url,timezone').maybeSingle();
+    const candidate={id:user.id,nickname:fallbackNickname(user),avatar_url:null,timezone:null,leaderboard_opt_in:false};
+    const inserted=await db.from('profiles').insert(candidate).select('id,nickname,avatar_url,timezone,leaderboard_opt_in').maybeSingle();
     if(inserted.data)profile=inserted.data;
-    else profile=(await db.from('profiles').select('id,nickname,avatar_url,timezone').eq('id',user.id).maybeSingle()).data??candidate;
+    else profile=(await db.from('profiles').select('id,nickname,avatar_url,timezone,leaderboard_opt_in').eq('id',user.id).maybeSingle()).data??candidate;
   }
   return profile;
 }

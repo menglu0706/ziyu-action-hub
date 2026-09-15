@@ -15,5 +15,5 @@ export async function requireAdmin() {
   if (!admin?.is_active || !['admin', 'editor'].includes(admin.role)) {
     redirect('/admin/login?error=access_denied');
   }
-  return { userId, role: admin.role };
+  return { db: supabase, userId, role: admin.role };
 }

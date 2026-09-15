@@ -5,6 +5,7 @@ import {createContent,deleteContent,updateContent} from '@/app/admin/actions';
 import type {AdminInitialData} from '@/lib/admin-repository';
 import type {GuideRecord,MediaRecord,QuickLink,TextTemplate} from '@/lib/admin-mock';
 import {AdminCard,AdminShell,StatusTag,Toggle} from './AdminShell';
+import {ImageUpload} from './ImageUpload';
 
 type Kind='links'|'templates'|'media'|'guides';
 type Item=QuickLink|TextTemplate|MediaRecord|GuideRecord;
@@ -18,7 +19,7 @@ function toLocalDateTime(value:string){const date=new Date(value);return Number.
 function blank(kind:Kind,guideType?:string):FormValues{return {title:'',platform:'',url:'',icon:'',order:0,enabled:true,templateType:'',content:'',pinned:false,category:'',publishedAt:kind==='media'?toLocalDateTime(new Date().toISOString()):'',cover:'',isNew:false,guideType:guideType==='tip'?'tip':'guide',summary:'',status:'draft'}}
 function valuesFor(item:Item,kind:Kind):FormValues{const base=blank(kind);if(kind==='links'){const x=item as QuickLink;return {...base,title:x.name,platform:x.platform,url:x.url,icon:x.icon,order:x.order,enabled:x.enabled}}if(kind==='templates'){const x=item as TextTemplate;return {...base,title:x.title,templateType:x.type,content:x.body,pinned:x.pinned,order:x.order,enabled:x.enabled}}if(kind==='media'){const x=item as MediaRecord;return {...base,title:x.title,category:x.category,publishedAt:toLocalDateTime(x.publishedAt),cover:x.cover,url:x.url,isNew:x.isNew,enabled:x.enabled}}const x=item as GuideRecord;return {...base,title:x.title,guideType:x.guideType,summary:x.summary,content:x.body,category:x.category,order:x.order,status:x.rawStatus}}
 function subtitle(item:Item,kind:Kind){if(kind==='links'){const x=item as QuickLink;return `${x.platform} · ${x.url}`}if(kind==='templates'){const x=item as TextTemplate;return `${x.type} · ${x.body}`}if(kind==='media'){const x=item as MediaRecord;return `${x.category} · ${x.date}`}const x=item as GuideRecord;return `${guideLabels[x.guideType]} · ${x.summary}`}
-function Field({label,required,children}:{label:string;required?:boolean;children:React.ReactNode}){return <label className="admin-field"><span>{label}{required&&<em> *</em>}</span>{children}</label>}
+function Field({label,required,children}:{label:string;required?:boolean;children:React.ReactNode}){if(label==='封面 URL')return <div className="admin-field"><span>封面图片</span><ImageUpload folder="media" onUploaded={value=>(children as React.ReactElement<{onChange:(event:{target:{value:string}})=>void}>).props.onChange({target:{value}})}/><small>也可保留外部 URL 兼容旧数据</small>{children}</div>;return <label className="admin-field"><span>{label}{required&&<em> *</em>}</span>{children}</label>}
 
 export function ContentManager({kind,data,create=false,guideType}:{kind:Kind;data:AdminInitialData;create?:boolean;guideType?:string}){
   const router=useRouter();const items=(kind==='links'?data.links:kind==='templates'?data.templates:kind==='media'?data.media:data.guides) as Item[];

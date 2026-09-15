@@ -2,9 +2,9 @@ import {FishIcon} from '@/components/FishIcon';
 import {MobileHeader} from '@/components/MobileHeader';
 import {MobileNav} from '@/components/MobileNav';
 
-export function TabLoading({title,urgent=false}:{title?:string;urgent?:boolean}){
+export function TabLoading({title,urgent=false,back,showNav=true}:{title?:string;urgent?:boolean;back?:string;showNav?:boolean}){
   return <main className="phone-shell" aria-busy="true" aria-label="页面加载中">
-    {urgent?<section className="hero"><FishIcon/></section>:<MobileHeader title={title??''}/>} 
+    {urgent?<section className="hero"><FishIcon/></section>:<MobileHeader title={title??''} back={back}/>}
     <div className={`page-pad animate-pulse ${urgent?'-mt-4 relative z-10':''}`}>
       <div className="mb-3 h-6 w-28 rounded-full bg-white/70"/>
       <section className="card p-5">
@@ -16,6 +16,6 @@ export function TabLoading({title,urgent=false}:{title?:string;urgent?:boolean})
       </section>
       <section className="card mt-4 h-28"/>
     </div>
-    <MobileNav/>
+    {showNav&&<MobileNav/>}
   </main>;
 }

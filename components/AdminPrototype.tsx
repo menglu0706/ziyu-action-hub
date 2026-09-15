@@ -7,10 +7,11 @@ import {ContentManager} from './ContentManager';
 import type {AdminInitialData} from '@/lib/admin-repository';
 import type {AdminTask} from '@/lib/admin-mock';
 import {deleteTask,duplicateTask,renameTask,saveTask,saveVisualSetting,setTaskStatus} from '@/app/admin/actions';
+import {ImageUpload} from './ImageUpload';
 
 const tone=(value:string):'blue'|'red'|'green'|'gold'|'purple'|'gray'=>value==='紧急'||value==='必做'||value==='下线'?'red':value==='音乐'||value==='上线'?'green':value==='重要'||value==='商务'?'gold':value==='数据'?'red':value==='草稿'?'gray':'blue';
 function Notice({text}:{text:string}){return text?<div className="admin-toast">{text}</div>:null}
-function Field({label,required,children}:{label:string;required?:boolean;children:React.ReactNode}){return <label className="admin-field"><span>{label}{required&&<em> *</em>}</span>{children}</label>}
+function Field({label,required,children}:{label:string;required?:boolean;children:React.ReactNode}){if(label==='背景图片 URL')return <div className="admin-field"><span>背景图片</span><ImageUpload folder="visual" onUploaded={value=>(children as React.ReactElement<{onChange:(event:{target:{value:string}})=>void}>).props.onChange({target:{value}})}/><small>也可保留外部 URL 兼容旧数据</small>{children}</div>;return <label className="admin-field"><span>{label}{required&&<em> *</em>}</span>{children}</label>}
 function Summary({icon,label,value,delta,toneName}:{icon:string;label:string;value:string;delta:string;toneName:string}){return <AdminCard className="summary-card"><i className={toneName}>{icon}</i><div><span>{label}</span><strong>{value}</strong></div><small>{delta}</small></AdminCard>}
 function ErrorNotice({data}:{data:AdminInitialData}){return data.error?<AdminCard><p className="muted">{data.error}</p></AdminCard>:null}
 
