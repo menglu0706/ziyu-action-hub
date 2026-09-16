@@ -19,7 +19,7 @@ export default async function Admin({params,searchParams}:{params:Promise<{slug?
   const [actor,data]=await Promise.all([adminPromise,getAdminInitialData(scopeFor(path,Boolean(editId)),db)]);
   if(path==='users'){
     if(actor.role!=='admin')redirect('/admin');
-    const result=await getAdminAccounts();
+    const result=await getAdminAccounts(actor);
     return <AdminUserManagement initialAccounts={result.accounts} initialError={result.error}/>;
   }
   if(path==='tasks/new'){
