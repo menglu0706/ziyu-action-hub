@@ -5,7 +5,7 @@ import type {VisualSetting} from './types';
 export type AdminCompletionTrendItem={date:string;count:number};
 export type AdminDashboardStats={todayVisits:number;todayTaskCompletions:number;registeredUsers:number;currentUrgentTasks:number;completionTrend:AdminCompletionTrendItem[]};
 export type AdminInitialData={tasks:AdminTask[];links:QuickLink[];templates:TextTemplate[];media:MediaRecord[];guides:GuideRecord[];visual:VisualSetting[];stats:AdminDashboardStats|null;error?:string};
-export type AdminDataScope='dashboard'|'tasks'|'links'|'templates'|'media'|'guides'|'visual'|'none';
+export type AdminDataScope='dashboard'|'task-new'|'tasks'|'links'|'templates'|'media'|'guides'|'visual'|'none';
 const urgencyLabel=(score:number)=>score>=90?'紧急':score>=70?'重要':score>=40?'普通':'低';
 const requiredLabel=(score:number)=>score>=90?'必做':score>=65?'建议':score>=35?'可做':'不推荐';
 const statusLabel=(status:string):AdminTask['status']=>status==='published'?'上线':status==='offline'?'下线':'草稿';
@@ -14,8 +14,9 @@ export async function getAdminInitialData(scope:AdminDataScope='tasks',client?:A
   const db=client??await createClient();
   const empty=()=>Promise.resolve({data:[],error:null});
   const emptyStats=()=>Promise.resolve({data:null,error:null});
+  const tasksQuery=scope==='dashboard'||scope==='task-new'||scope==='tasks'?db.from('tasks').select('*').order('is_pinned',{ascending:false}).order('urgent_sort_position',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false}):null;
   const [tasksResult,linksResult,templatesResult,mediaResult,guidesResult,visualResult,statsResult]=await Promise.all([
-    scope==='dashboard'||scope==='tasks'?db.from('tasks').select('*').order('is_pinned',{ascending:false}).order('urgent_sort_position',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false}):empty(),
+    tasksQuery?(scope==='tasks'?tasksQuery:tasksQuery.limit(5)):empty(),
     scope==='links'?db.from('quick_links').select('*').order('sort_order'):empty(),
     scope==='templates'?db.from('text_templates').select('*').order('sort_order'):empty(),
     scope==='media'?db.from('media_items').select('*').order('published_at',{ascending:false}):empty(),
