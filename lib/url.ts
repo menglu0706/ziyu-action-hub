@@ -4,5 +4,4 @@ export function isWeiboWboxUrl(value:string){if(!isSafeWebUrl(value))return fals
 export function cleanWeiboWboxUrl(value:string){if(!isWeiboWboxUrl(value))return value;let clean=value;while(clean.endsWith('%'))clean=clean.slice(0,-1);return clean}
 export function externalWebHref(value:string){const clean=cleanWeiboWboxUrl(value);return isSafeWebUrl(clean)?clean:null}
 export function externalWebTarget(value:string):'_self'|'_blank'|null{if(!isSafeWebUrl(value))return null;const hostname=new URL(value).hostname.toLowerCase();return hostname==='t.cn'||hostname==='www.t.cn'?'_self':'_blank'}
-export function weiboSinaUrlWrapper(value:string){const original=externalWebHref(value);return original&&isWeiboWboxUrl(original)?`https://weibo.cn/sinaurl?u=${encodeURIComponent(original)}`:null}
-export function weiboAppBrowserUrl(value:string){const wrapper=weiboSinaUrlWrapper(value);return wrapper?`sinaweibo://browser?url=${encodeURIComponent(wrapper)}`:null}
+export function weiboWboxNativeUrl(value:string){const original=externalWebHref(value);if(!original||!isWeiboWboxUrl(original))return null;const query=new URL(original).search.slice(1);return query?`sinaweibo://wbox?${query}`:'sinaweibo://wbox'}

@@ -33,6 +33,14 @@ function assertAdminKey(key:string){
   throw new Error('SUPABASE_SERVICE_ROLE_KEY 配置错误：密钥格式无效');
 }
 
+export function getAdminKeyType(){
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if(!key)return 'missing' as const;
+  if(isModernSecretKey(key))return 'sb_secret' as const;
+  if(legacyJwtRole(key)==='service_role')return 'legacy service_role' as const;
+  return 'invalid' as const;
+}
+
 export function createAdminClient(){
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
   if(!url||!key)throw new Error('后台账号管理未配置 SUPABASE_SERVICE_ROLE_KEY');
