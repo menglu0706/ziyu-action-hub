@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import type {ServerTrace} from '@/lib/observability/server-trace';
 
 export async function getAdminActor(client?:Awaited<ReturnType<typeof createClient>>) {
   const supabase = client??await createClient();
@@ -11,8 +12,8 @@ export async function getAdminActor(client?:Awaited<ReturnType<typeof createClie
   return {db:supabase,userId:admin.user_id,role:admin.role as 'admin'|'editor'};
 }
 
-export async function requireAdmin(client?:Awaited<ReturnType<typeof createClient>>) {
-  const actor=await getAdminActor(client);
+export async function requireAdmin(client?:Awaited<ReturnType<typeof createClient>>,trace?:ServerTrace) {
+  const actor=trace?await trace.measure('page.admin.authorization',()=>getAdminActor(client)):await getAdminActor(client);
   if(!actor){
     redirect('/admin/login?error=access_denied');
   }

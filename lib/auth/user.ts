@@ -1,5 +1,6 @@
 import {redirect} from 'next/navigation';
 import {createClient} from '@/lib/supabase/server';
+import type {ServerTrace} from '@/lib/observability/server-trace';
 
 export function safeNextPath(value:string|null|undefined,fallback='/me'){
   return value?.startsWith('/')&&!value.startsWith('//')&&!value.includes('\\')?value:fallback;
@@ -11,8 +12,8 @@ function fallbackNickname(user:{email?:string;user_metadata?:Record<string,unkno
   return user.email?.split('@')[0]?.trim()||'新用户';
 }
 
-export async function requireUserIdentity(next='/me'){
-  const db=await createClient();
+export async function requireUserIdentity(next='/me',trace?:ServerTrace){
+  const db=await createClient(trace);
   const {data:{user},error}=await db.auth.getUser();
   if(error||!user)redirect(`/login?next=${encodeURIComponent(safeNextPath(next))}`);
   return {db,user};

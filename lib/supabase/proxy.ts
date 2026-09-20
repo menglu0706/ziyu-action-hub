@@ -4,8 +4,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getSupabaseConfig } from './config';
 
 const AUTH_REQUEST_TIMEOUT_MS = 4_000;
-const SLOW_AUTH_LOG_THRESHOLD_MS = 1_000;
 const NORMAL_AUTH_LOG_SAMPLE_RATE = 0.01;
+const SLOW_CALL_LOG_THRESHOLD_MS = 750;
+const REQUEST_ID_HEADER = 'x-ziyu-request-id';
 
 type AuthRequestState = { timedOut: boolean; deadlineAt: number };
 
@@ -47,10 +48,32 @@ function retryableAuthResponse(response: NextResponse) {
 }
 
 export async function updateSession(request: NextRequest) {
+  const requestStartedAt = Date.now();
   const pathname = request.nextUrl.pathname;
-  if (pathname === '/admin/login') return NextResponse.next({ request });
+  const requestId = crypto.randomUUID();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(REQUEST_ID_HEADER, requestId);
+  const sampled = Math.random() < NORMAL_AUTH_LOG_SAMPLE_RATE;
+  const spans: Array<{stage:string;startMs:number;durationMs:number;result:string;errorType?:string}> = [];
+  const addSpan = (stage:string,startedAt:number,result:string,errorType?:string) => spans.push({stage,startMs:startedAt-requestStartedAt,durationMs:Date.now()-startedAt,result,...(errorType?{errorType}:{})});
+  const logTrace = (outcome:string,errorType?:string) => {
+    try{
+      const totalMs=Date.now()-requestStartedAt;
+      if(outcome!=='failure'&&totalMs<1_000&&!spans.some(span=>span.result==='failure'||span.durationMs>=SLOW_CALL_LOG_THRESHOLD_MS)&&!sampled)return;
+      const payload={event:'middleware-request-trace',requestId,pathname,totalMs,outcome,...(errorType?{errorType}:{}),spans};
+      if(outcome==='failure')console.warn('[middleware-trace]',payload);else console.info('[middleware-trace]',payload);
+    }catch{}
+  };
+  const nextResponse = () => NextResponse.next({ request: { headers: requestHeaders } });
+  if (pathname === '/admin/login') {
+    const response=nextResponse();
+    addSpan('middleware.public-bypass',requestStartedAt,'success');
+    logTrace('success');
+    return response;
+  }
 
-  let response = NextResponse.next({ request });
+  const setupStartedAt=Date.now();
+  let response = nextResponse();
   const { url, publishableKey } = getSupabaseConfig();
   const startedAt = Date.now();
   const authRequestState: AuthRequestState = {
@@ -63,67 +86,45 @@ export async function updateSession(request: NextRequest) {
       getAll: () => request.cookies.getAll(),
       setAll(cookiesToSet, headersToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
+        response = nextResponse();
         cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
         Object.entries(headersToSet).forEach(([name, value]) => response.headers.set(name, value));
       },
     },
   });
-
-  const requestId = request.headers.get('x-vercel-id') ?? crypto.randomUUID();
-  const sampled = Math.random() < NORMAL_AUTH_LOG_SAMPLE_RATE;
-  if (sampled) console.info('[middleware-auth]', { event: 'claims-start', requestId, pathname });
+  addSpan('middleware.setup',setupStartedAt,'success');
 
   let claimsResult: Awaited<ReturnType<typeof supabase.auth.getClaims>>;
+  const claimsStartedAt=Date.now();
   try {
     claimsResult = await supabase.auth.getClaims();
   } catch (caught) {
-    const durationMs = Date.now() - startedAt;
+    const errorName=caught instanceof Error ? caught.name : 'UnknownError';
+    addSpan('supabase.auth.getClaims',claimsStartedAt,'failure',authRequestState.timedOut?'timeout':errorName);
     if (authRequestState.timedOut || isAuthRetryableFetchError(caught)) {
-      console.warn('[middleware-auth]', {
-        event: authRequestState.timedOut ? 'claims-timeout' : 'claims-network-error',
-        requestId,
-        pathname,
-        durationMs,
-        errorName: caught instanceof Error ? caught.name : 'UnknownError',
-      });
-      return retryableAuthResponse(response);
+      const retry=retryableAuthResponse(response);
+      addSpan('middleware.response',Date.now(),'success');
+      logTrace('failure',authRequestState.timedOut?'auth_timeout':'auth_network_error');
+      return retry;
     }
-    console.error('[middleware-auth]', {
-      event: 'claims-exception',
-      requestId,
-      pathname,
-      durationMs,
-      errorName: caught instanceof Error ? caught.name : 'UnknownError',
-    });
+    logTrace('failure',errorName);
     throw caught;
   }
 
   const { data, error } = claimsResult;
-  const durationMs = Date.now() - startedAt;
   if (authRequestState.timedOut || isAuthRetryableFetchError(error)) {
-    console.warn('[middleware-auth]', {
-      event: authRequestState.timedOut ? 'claims-timeout' : 'claims-network-error',
-      requestId,
-      pathname,
-      durationMs,
-      errorName: error?.name ?? 'UnknownError',
-    });
-    return retryableAuthResponse(response);
+    addSpan('supabase.auth.getClaims',claimsStartedAt,'failure',authRequestState.timedOut?'timeout':error?.name);
+    const retry=retryableAuthResponse(response);
+    addSpan('middleware.response',Date.now(),'success');
+    logTrace('failure',authRequestState.timedOut?'auth_timeout':'auth_network_error');
+    return retry;
   }
-  if (sampled || durationMs >= SLOW_AUTH_LOG_THRESHOLD_MS) {
-    console.info('[middleware-auth]', {
-      event: 'claims-complete',
-      requestId,
-      pathname,
-      durationMs,
-      outcome: error || !data?.claims?.sub ? 'no-session' : 'authenticated',
-    });
-  }
+  addSpan('supabase.auth.getClaims',claimsStartedAt,'success',error?'no_session':undefined);
 
+  const authorizeStartedAt=Date.now();
   if (pathname === '/me' || pathname.startsWith('/me/')) {
     const userId=data?.claims?.sub;
-    if(error||!userId){const login=request.nextUrl.clone();login.pathname='/login';login.searchParams.set('next',pathname);return NextResponse.redirect(login)}
+    if(error||!userId){const login=request.nextUrl.clone();login.pathname='/login';login.searchParams.set('next',pathname);addSpan('middleware.authorize',authorizeStartedAt,'redirect');const redirect=NextResponse.redirect(login);logTrace('redirect');return redirect}
   }
 
   if (pathname.startsWith('/admin')) {
@@ -132,8 +133,14 @@ export async function updateSession(request: NextRequest) {
       const login = request.nextUrl.clone();
       login.pathname = '/admin/login';
       login.searchParams.set('next', pathname);
-      return NextResponse.redirect(login);
+      addSpan('middleware.authorize',authorizeStartedAt,'redirect');
+      const redirect=NextResponse.redirect(login);
+      logTrace('redirect');
+      return redirect;
     }
   }
+  addSpan('middleware.authorize',authorizeStartedAt,'success');
+  addSpan('middleware.response',Date.now(),'success');
+  logTrace('success');
   return response;
 }
