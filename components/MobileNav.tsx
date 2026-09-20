@@ -1,6 +1,6 @@
 'use client';
-/* eslint-disable @next/next/no-img-element */
 import type {CSSProperties} from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 
@@ -13,4 +13,4 @@ const items=[
 ] as const;
 const navIconTuning={urgent:{scale:1,x:0,y:1},daily:{scale:1.16,x:-1,y:1},feed:{scale:1.08,x:0,y:0},guide:{scale:1,x:0,y:1},me:{scale:1.1,x:0,y:0}} as const;
 
-export function MobileNav(){const path=usePathname();return <nav className="nav" aria-label="主导航">{items.map(item=>{const tuning=navIconTuning[item.key],style={'--icon-scale':tuning.scale,'--icon-x':`${tuning.x}px`,'--icon-y':`${tuning.y}px`} as CSSProperties;const prefetch=item.href==='/media'||item.href==='/guide'||item.href==='/me'&&path.startsWith('/me/');return <Link key={item.href} href={item.href} prefetch={prefetch?true:item.href==='/me'?false:null} className={path.startsWith(item.href)?'active':''}><span className="nav-icon" style={style}><img src={item.src} alt=""/></span><span className="nav-label">{item.label}</span></Link>})}</nav>}
+export function MobileNav(){const path=usePathname();return <nav className="nav" aria-label="主导航">{items.map(item=>{const tuning=navIconTuning[item.key],style={'--icon-scale':tuning.scale,'--icon-x':`${tuning.x}px`,'--icon-y':`${tuning.y}px`} as CSSProperties;const prefetch=item.href==='/media'||item.href==='/guide'||item.href==='/me'&&path.startsWith('/me/');return <Link key={item.href} href={item.href} prefetch={prefetch?true:item.href==='/me'?false:null} className={path.startsWith(item.href)?'active':''}><span className="nav-icon" style={style}><Image src={item.src} alt="" width={144} height={144}/></span><span className="nav-label">{item.label}</span></Link>})}</nav>}
