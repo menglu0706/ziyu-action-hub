@@ -9,6 +9,8 @@ import {externalWebHref,isWechatMiniProgramToken} from '@/lib/url';
 
 export const revalidate=30;
 
+export async function generateStaticParams(){return []}
+
 export default async function TaskDetail({params}:{params:Promise<{id:string}>}){
   const {id}=await params;
   const task=await repository.getTask(id);
