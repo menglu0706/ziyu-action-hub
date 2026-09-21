@@ -5,7 +5,7 @@ import {UrgentList} from '@/components/UrgentList';
 import {repository} from '@/lib/repository';
 import {visualStyle} from '@/lib/visual';
 
-export const dynamic='force-dynamic';
+export const revalidate=30;
 
 export default async function Urgent(){
   const [tasks,setting]=await Promise.all([repository.getUrgentTasks(),repository.getVisualSetting('urgent')]);
