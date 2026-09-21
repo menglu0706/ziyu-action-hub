@@ -1,6 +1,5 @@
 import {unstable_cache} from 'next/cache';
 import {createPublicClient} from '@/lib/supabase/public';
-import {createClient} from '@/lib/supabase/server';
 import type {Category,Guide,MediaItem,QuickLink,Task,TextTemplate,VisualSetting} from './types';
 
 export class ContentDataError extends Error{constructor(){super('内容暂时无法加载，请稍后重试。')}}
@@ -36,8 +35,8 @@ const MEDIA_EXPIRY_MS=7*24*60*60*1000;
 const getCachedMedia=unstable_cache(withFallback(async()=>{const db=createPublicClient();const cutoff=new Date(Date.now()-MEDIA_EXPIRY_MS).toISOString();const rows=await run(db.from('media_items').select('*').eq('is_enabled',true).gte('published_at',cutoff).order('created_at',{ascending:false}));return dedupeBy(((rows??[]) as MediaRow[]).map(r=>({id:r.id,title:r.title,category:r.category,publishedAt:r.published_at,coverUrl:r.cover_url??'',url:r.external_url,isNew:r.is_new,enabled:r.is_enabled})),mediaDedupeKey)},[] as MediaItem[]),['public-media'],publicCacheOptions);
 const getCachedVisualSetting=unstable_cache(withFallback(async(module:string)=>{const db=createPublicClient();const result=await run(db.from('visual_settings').select('*').eq('module_key',module).maybeSingle());const row=result as VisualSettingRow|null;return row?mapVisualSetting(row):undefined},undefined as VisualSetting|undefined),['public-visual-setting'],publicCacheOptions);
 
-async function getQuickLinks(){const db=await createClient();const rows=await run(db.from('quick_links').select('*').eq('is_enabled',true).order('sort_order'));return ((rows??[]) as QuickLinkRow[]).map(r=>({id:r.id,title:r.title,platform:r.platform??'',url:r.external_url,icon:r.icon_key??'↗',sortOrder:r.sort_order,enabled:r.is_enabled}))}
-async function getTemplates(){const db=await createClient();const rows=await run(db.from('text_templates').select('*').eq('is_enabled',true).order('is_pinned_today',{ascending:false}).order('sort_order'));return ((rows??[]) as TemplateRow[]).map(r=>({id:r.id,title:r.title,type:r.template_type,content:r.content,pinned:r.is_pinned_today,sortOrder:r.sort_order,enabled:r.is_enabled}))}
+const getCachedQuickLinks=unstable_cache(withFallback(async()=>{const db=createPublicClient();const rows=await run(db.from('quick_links').select('*').eq('is_enabled',true).order('sort_order'));return ((rows??[]) as QuickLinkRow[]).map(r=>({id:r.id,title:r.title,platform:r.platform??'',url:r.external_url,icon:r.icon_key??'↗',sortOrder:r.sort_order,enabled:r.is_enabled}))},[] as QuickLink[]),['public-quick-links'],publicCacheOptions);
+const getCachedTemplates=unstable_cache(withFallback(async()=>{const db=createPublicClient();const rows=await run(db.from('text_templates').select('*').eq('is_enabled',true).order('is_pinned_today',{ascending:false}).order('sort_order'));return ((rows??[]) as TemplateRow[]).map(r=>({id:r.id,title:r.title,type:r.template_type,content:r.content,pinned:r.is_pinned_today,sortOrder:r.sort_order,enabled:r.is_enabled}))},[] as TextTemplate[]),['public-templates'],publicCacheOptions);
 
 export interface ActionHubRepository{getTasks():Promise<Task[]>;getUrgentTasks():Promise<Task[]>;getTask(id:string):Promise<Task|undefined>;getGuides():Promise<Guide[]>;getQuickLinks():Promise<QuickLink[]>;getTemplates():Promise<TextTemplate[]>;getMedia():Promise<MediaItem[]>;getVisualSetting(module:string):Promise<VisualSetting|undefined>}
 export const repository:ActionHubRepository={
@@ -45,8 +44,8 @@ export const repository:ActionHubRepository={
  getUrgentTasks:getCachedUrgentTasks,
  getTask:getCachedTask,
  getGuides:getCachedGuides,
- getQuickLinks,
- getTemplates,
+ getQuickLinks:getCachedQuickLinks,
+ getTemplates:getCachedTemplates,
  getMedia:getCachedMedia,
  getVisualSetting:getCachedVisualSetting
 };

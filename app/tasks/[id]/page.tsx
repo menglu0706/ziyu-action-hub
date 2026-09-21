@@ -7,7 +7,9 @@ import {MiniProgramAction} from '@/components/MiniProgramAction';
 import {repository} from '@/lib/repository';
 import {externalWebHref,isWechatMiniProgramToken} from '@/lib/url';
 
-export const dynamic='force-dynamic';
+export const revalidate=30;
+
+export async function generateStaticParams(){return []}
 
 export default async function TaskDetail({params}:{params:Promise<{id:string}>}){
   const {id}=await params;
