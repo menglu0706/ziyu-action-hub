@@ -122,11 +122,6 @@ export async function updateSession(request: NextRequest) {
   addSpan('supabase.auth.getClaims',claimsStartedAt,'success',error?'no_session':undefined);
 
   const authorizeStartedAt=Date.now();
-  if (pathname === '/me' || pathname.startsWith('/me/')) {
-    const userId=data?.claims?.sub;
-    if(error||!userId){const login=request.nextUrl.clone();login.pathname='/login';login.searchParams.set('next',pathname);addSpan('middleware.authorize',authorizeStartedAt,'redirect');const redirect=NextResponse.redirect(login);logTrace('redirect');return redirect}
-  }
-
   if (pathname.startsWith('/admin')) {
     const userId = data?.claims?.sub;
     if (error || !userId) {
