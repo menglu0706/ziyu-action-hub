@@ -17,8 +17,8 @@ async function copyText(value:string){
   }
 }
 
-export function MiniProgramAction({token,className=''}:{token:string;className?:string}){
+export function MiniProgramAction({token,className='',onClick}:{token:string;className?:string;onClick?:()=>void}){
   const [copied,setCopied]=useState(false),[failed,setFailed]=useState(false);
-  const copy=async()=>{try{await copyText(token);setCopied(true);setFailed(false)}catch{setFailed(true);setCopied(false)}};
+  const copy=async()=>{onClick?.();try{await copyText(token);setCopied(true);setFailed(false)}catch{setFailed(true);setCopied(false)}};
   return <div className={className}><button type="button" className="primary py-2.5" onClick={copy}>{copied?'已复制 ✓':'复制小程序口令'}</button><p className={`mb-0 mt-2 text-center text-xs ${failed?'text-red-500':'text-[#7890a6]'}`}>{failed?'复制失败，请重试':'请粘贴到微信聊天中打开小程序'}</p></div>;
 }
