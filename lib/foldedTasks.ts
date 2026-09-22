@@ -1,31 +1,42 @@
 'use client';
+import {shanghaiDate} from './shanghaiDate';
 
 const STORAGE_KEY='ziyu-folded-tasks';
 
-function readFolded():Set<string>{
+// Maps taskId -> the Shanghai calendar date it was folded on. Recurring
+// (task.daily) folds are only honored for that same day; one-time
+// (urgent-only) folds stay folded regardless of date, until unfolded by
+// hand or the task itself expires off the page.
+function readFolded():Record<string,string>{
   try{
     const raw=localStorage.getItem(STORAGE_KEY);
-    if(!raw)return new Set();
+    if(!raw)return {};
     const parsed=JSON.parse(raw);
-    return Array.isArray(parsed)?new Set(parsed.map(String)):new Set();
+    return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:{};
   }catch{
-    return new Set();
+    return {};
   }
 }
 
-function writeFolded(ids:Set<string>){
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify([...ids]))}
+function writeFolded(map:Record<string,string>){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(map))}
   catch{/* storage may be unavailable (private mode, quota); fold state just won't persist */}
 }
 
-export function isTaskFolded(taskId:string):boolean{
-  return readFolded().has(taskId);
+export function isTaskFolded(taskId:string,resetsDaily:boolean):boolean{
+  const map=readFolded(),foldedOn=map[taskId];
+  if(!foldedOn)return false;
+  if(resetsDaily&&foldedOn!==shanghaiDate()){
+    delete map[taskId];
+    writeFolded(map);
+    return false;
+  }
+  return true;
 }
 
-export function toggleTaskFolded(taskId:string):boolean{
-  const ids=readFolded();
-  const next=!ids.has(taskId);
-  if(next)ids.add(taskId);else ids.delete(taskId);
-  writeFolded(ids);
-  return next;
+export function toggleTaskFolded(taskId:string,resetsDaily:boolean):boolean{
+  const map=readFolded(),isFolded=isTaskFolded(taskId,resetsDaily);
+  if(isFolded)delete map[taskId];else map[taskId]=shanghaiDate();
+  writeFolded(map);
+  return !isFolded;
 }

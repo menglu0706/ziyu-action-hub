@@ -3,15 +3,10 @@
 import {useEffect} from 'react';
 import {usePathname} from 'next/navigation';
 import {createClient} from '@/lib/supabase/client';
+import {shanghaiDate} from '@/lib/shanghaiDate';
 
 const markerPrefix='ziyu-site-visit:';
 const inFlightDates=new Set<string>();
-
-function shanghaiDate(){
-  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
-  const value=(type:Intl.DateTimeFormatPartTypes)=>parts.find(part=>part.type===type)?.value??'';
-  return `${value('year')}-${value('month')}-${value('day')}`;
-}
 
 export function DailyVisitTracker(){
   const pathname=usePathname();

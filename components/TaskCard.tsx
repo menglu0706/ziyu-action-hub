@@ -13,8 +13,8 @@ import {isTaskFolded,toggleTaskFolded} from '@/lib/foldedTasks';
 export function TaskCard({task,dominant=false,urgent=false,directAction=false}:{task:Task;dominant?:boolean;urgent?:boolean;directAction?:boolean}){
   const [expired,setExpired]=useState(()=>Boolean(task.deadline&&new Date(task.deadline).getTime()<=Date.now()));const expire=useCallback(()=>setExpired(true),[]);
   const [folded,setFolded]=useState(false);
-  useEffect(()=>{setFolded(isTaskFolded(task.id))},[task.id]);
-  const toggleFold=()=>setFolded(toggleTaskFolded(task.id));
+  useEffect(()=>{setFolded(isTaskFolded(task.id,task.daily))},[task.id,task.daily]);
+  const toggleFold=()=>setFolded(toggleTaskFolded(task.id,task.daily));
   if(urgent&&expired)return null;
   const miniProgramToken=isWechatMiniProgramToken(task.url)?task.url:null,targetHref=externalWebHref(task.url),showAction=(dominant||urgent||directAction)&&!expired;
   if(folded)return <article className="card p-3 flex items-center gap-3"><button type="button" onClick={toggleFold} aria-label="展开任务" className="flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left"><span className="text-[#8fae66]">✓</span><b className="min-w-0 flex-1 truncate text-sm font-bold text-[#a3b4c4] line-through">{task.title}</b><span className="shrink-0 text-xs font-bold text-[#438bd1]">展开 ⌄</span></button></article>;
