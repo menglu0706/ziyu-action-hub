@@ -3,7 +3,7 @@ import type {CSSProperties} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 
-const SPRITE_SRC='/nav-icons/sprite.png';
+const SPRITE_SRC='/nav-icons/sprite.webp';
 const items=[
   {key:'urgent',href:'/urgent',spriteIndex:0,label:'紧急'},
   {key:'daily',href:'/daily',spriteIndex:1,label:'日常'},
