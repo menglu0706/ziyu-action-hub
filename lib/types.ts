@@ -1,5 +1,7 @@
+export const DAILY_GROUPS=['音乐','微博','鱼干','其他'] as const;
+export type DailyGroup=(typeof DAILY_GROUPS)[number];
 export type Category='音乐'|'数据'|'商务'|'超话'|'日常'|'其他';
-export type Task={id:string;title:string;platform:string;category:Category;urgency:number;required:number;minutes:number;deadline:string|null;createdAt?:string;quick:string;description:string;recommendedCopy:string;url:string;pinned:boolean;urgent:boolean;daily:boolean;multi:boolean;urgentSortPosition:number|null;steps:string[]};
+export type Task={id:string;title:string;platform:string;category:Category;urgency:number;required:number;minutes:number;deadline:string|null;createdAt?:string;quick:string;description:string;recommendedCopy:string;url:string;pinned:boolean;urgent:boolean;daily:boolean;dailyGroup:DailyGroup;multi:boolean;urgentSortPosition:number|null;steps:string[]};
 export type Guide={id:string;type:'tip'|'guide'|'faq';title:string;summary:string;body:string;category:string};
 export type QuickLink={id:string;title:string;platform:string;url:string;icon:string;sortOrder:number;enabled:boolean};
 export type TextTemplate={id:string;title:string;type:string;content:string;pinned:boolean;sortOrder:number;enabled:boolean};
