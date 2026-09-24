@@ -196,6 +196,12 @@ async function scanAccount(uid:string){
 
 Deno.serve(async req=>{
   if(req.headers.get('x-watcher-key')!==Deno.env.get('WATCHER_KEY'))return new Response('forbidden',{status:403});
+  // ?test=alert sends one WeChat test message (counts toward the daily quota); it never touches Weibo.
+  if(new URL(req.url).searchParams.get('test')==='alert'){
+    if(!Deno.env.get('SERVERCHAN_KEY'))return Response.json({sent:false,reason:'SERVERCHAN_KEY 未设置'});
+    const sent=await alert('posted','微博监控测试提醒','这是一条测试消息：微博监控的微信提醒已配置成功。');
+    return Response.json({sent,reason:sent?null:'发送失败或今日额度已用完'});
+  }
   const {data:settings,error:settingsError}=await db.from('weibo_watcher_settings').select('enabled,failing,updated_at').single();
   if(settingsError)return Response.json({error:`读取监控设置失败：${settingsError.message}`},{status:500});
   if(!settings.enabled)return Response.json({skipped:'disabled'});
