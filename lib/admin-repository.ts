@@ -7,10 +7,12 @@ export type AdminTopTaskClick={buttonKey:string;title:string|null;clickCount:num
 export type AdminButtonClickStats={navClicks:Record<string,number>;topTaskClicks:AdminTopTaskClick[]};
 export type AdminWatcherItem={postId:string;uid:string;kind:string;status:string;reason:string|null;title:string|null;taskId:string|null;createdAt:string};
 export type AdminWatcherStatus={enabled:boolean;failing:boolean;lastScanAt:string|null;lastScanOk:boolean|null;lastError:string|null;lastOkAt:string|null;recent:AdminWatcherItem[]};
-export type AdminInitialData={watcher?:AdminWatcherStatus|null;tasks:AdminTask[];links:QuickLink[];templates:TextTemplate[];media:MediaRecord[];guides:GuideRecord[];visual:VisualSetting[];stats:AdminDashboardStats|null;buttonClicks:AdminButtonClickStats|null;error?:string};
+export type AdminInitialData={watcher?:AdminWatcherStatus|null;tasks:AdminTask[];activeUrgentTasks:AdminTask[];links:QuickLink[];templates:TextTemplate[];media:MediaRecord[];guides:GuideRecord[];visual:VisualSetting[];stats:AdminDashboardStats|null;buttonClicks:AdminButtonClickStats|null;error?:string};
 export type AdminDataScope='dashboard'|'task-new'|'tasks'|'links'|'templates'|'media'|'guides'|'visual'|'none';
 const urgencyLabel=(score:number)=>score>=90?'紧急':score>=70?'重要':score>=40?'普通':'低';
 const requiredLabel=(score:number)=>score>=90?'必做':score>=65?'建议':score>=35?'可做':'不推荐';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase rows are untyped here
+const mapAdminTask=(r:any,i:number)=>({id:r.id,title:r.title,category:r.category,platform:r.platform??'',urgency:urgencyLabel(r.urgency_score),required:requiredLabel(r.required_score),minutes:r.estimated_minutes,deadline:r.deadline?new Date(r.deadline).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—',status:statusLabel(r.status),url:r.external_url,quick:r.quick_instruction,description:r.description??'',recommendedCopy:r.recommended_copy??'',rawDeadline:r.deadline,audience:r.audience,pinned:r.is_pinned,urgentVisible:r.show_in_urgent,daily:r.show_in_daily,dailyGroup:r.daily_group,source:r.source??'manual',push:r.push_reserved,urgentSortPosition:r.urgent_sort_position??null,dailySortPosition:r.daily_sort_position??null,publishAt:r.publish_at??null,pinStartsAt:r.pin_starts_at??null,pinEndsAt:r.pin_ends_at??null,_sort:i} as AdminTask & {_sort:number});
 const statusLabel=(status:string):AdminTask['status']=>status==='published'?'上线':status==='offline'?'下线':'草稿';
 
 export async function getAdminInitialData(scope:AdminDataScope='tasks',client?:Awaited<ReturnType<typeof createClient>>):Promise<AdminInitialData>{
@@ -18,7 +20,9 @@ export async function getAdminInitialData(scope:AdminDataScope='tasks',client?:A
   const empty=()=>Promise.resolve({data:[],error:null});
   const emptyStats=()=>Promise.resolve({data:null,error:null});
   const tasksQuery=scope==='dashboard'||scope==='task-new'||scope==='tasks'?db.from('tasks').select('*').order('is_pinned',{ascending:false}).order('urgent_sort_position',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false}):null;
-  const [tasksResult,linksResult,templatesResult,mediaResult,guidesResult,visualResult,statsResult,buttonClicksResult]=await Promise.all([
+  // Same filter and order as the public /urgent page.
+  const activeUrgentQuery=scope==='dashboard'?db.from('tasks').select('*').eq('status','published').eq('show_in_urgent',true).or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`).order('is_pinned',{ascending:false}).order('urgent_sort_position',{ascending:true,nullsFirst:false}).order('created_at',{ascending:false}):null;
+  const [tasksResult,linksResult,templatesResult,mediaResult,guidesResult,visualResult,statsResult,buttonClicksResult,activeUrgentResult]=await Promise.all([
     tasksQuery?(scope==='tasks'?tasksQuery:tasksQuery.limit(5)):empty(),
     scope==='links'?db.from('quick_links').select('*').order('sort_order'):empty(),
     scope==='templates'?db.from('text_templates').select('*').order('sort_order'):empty(),
@@ -26,15 +30,17 @@ export async function getAdminInitialData(scope:AdminDataScope='tasks',client?:A
     scope==='guides'?db.from('guides').select('*').order('sort_order'):empty(),
     scope==='visual'?db.from('visual_settings').select('*').order('module_key'):empty(),
     scope==='dashboard'?db.rpc('get_admin_dashboard_stats'):emptyStats(),
-    scope==='dashboard'?db.rpc('get_button_click_stats'):emptyStats()
+    scope==='dashboard'?db.rpc('get_button_click_stats'):emptyStats(),
+    activeUrgentQuery??empty()
   ]);
   const watcher=scope==='dashboard'?await getWatcherStatus(db):null;
-  if(tasksResult.error||linksResult.error||templatesResult.error||mediaResult.error||guidesResult.error||visualResult.error)return {tasks:[],links:[],templates:[],media:[],guides:[],visual:[],stats:null,buttonClicks:null,error:'数据加载失败，请检查数据库迁移后重试。'};
+  if(tasksResult.error||activeUrgentResult.error||linksResult.error||templatesResult.error||mediaResult.error||guidesResult.error||visualResult.error)return {tasks:[],activeUrgentTasks:[],links:[],templates:[],media:[],guides:[],visual:[],stats:null,buttonClicks:null,error:'数据加载失败，请检查数据库迁移后重试。'};
   const statsRow=Array.isArray(statsResult.data)?statsResult.data[0]:statsResult.data;
   const clickStats=buttonClicksResult.data as {navClicks?:Record<string,unknown>;topTaskClicks?:{button_key:unknown;title:unknown;click_count:unknown}[]}|null;
   return {
     watcher,
-    tasks:(tasksResult.data??[]).map((r,i)=>({id:r.id,title:r.title,category:r.category,platform:r.platform??'',urgency:urgencyLabel(r.urgency_score),required:requiredLabel(r.required_score),minutes:r.estimated_minutes,deadline:r.deadline?new Date(r.deadline).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—',status:statusLabel(r.status),url:r.external_url,quick:r.quick_instruction,description:r.description??'',recommendedCopy:r.recommended_copy??'',rawDeadline:r.deadline,audience:r.audience,pinned:r.is_pinned,urgentVisible:r.show_in_urgent,daily:r.show_in_daily,dailyGroup:r.daily_group,source:r.source??'manual',push:r.push_reserved,urgentSortPosition:r.urgent_sort_position??null,dailySortPosition:r.daily_sort_position??null,publishAt:r.publish_at??null,pinStartsAt:r.pin_starts_at??null,pinEndsAt:r.pin_ends_at??null,_sort:i} as AdminTask & {_sort:number})),
+    tasks:(tasksResult.data??[]).map(mapAdminTask),
+    activeUrgentTasks:(activeUrgentResult.data??[]).map(mapAdminTask),
     links:(linksResult.data??[]).map(r=>({id:r.id,name:r.title,platform:r.platform??'',url:r.external_url,icon:r.icon_key??'↗',order:r.sort_order,enabled:r.is_enabled})),
     templates:(templatesResult.data??[]).map(r=>({id:r.id,title:r.title,type:r.template_type,body:r.content,pinned:r.is_pinned_today,order:r.sort_order,enabled:r.is_enabled})),
     media:(mediaResult.data??[]).map(r=>({id:r.id,title:r.title,category:r.category,date:r.published_at.slice(0,10),publishedAt:r.published_at,cover:r.cover_url??'',url:r.external_url,isNew:r.is_new,enabled:r.is_enabled})),
