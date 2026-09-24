@@ -190,8 +190,9 @@ async function scanAccount(uid:string){
 
 Deno.serve(async req=>{
   if(req.headers.get('x-watcher-key')!==Deno.env.get('WATCHER_KEY'))return new Response('forbidden',{status:403});
-  const {data:settings}=await db.from('weibo_watcher_settings').select('enabled,failing').single();
-  if(!settings?.enabled)return Response.json({skipped:'disabled'});
+  const {data:settings,error:settingsError}=await db.from('weibo_watcher_settings').select('enabled,failing').single();
+  if(settingsError)return Response.json({error:`读取监控设置失败：${settingsError.message}`},{status:500});
+  if(!settings.enabled)return Response.json({skipped:'disabled'});
   const started=Date.now(),published:{postId:string;title:string;link:string}[]=[],failures:string[]=[];
   try{
     const {data:states}=await db.from('weibo_watch_state').select('uid,last_seen_id');
