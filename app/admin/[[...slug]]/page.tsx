@@ -1,6 +1,7 @@
 import {redirect} from 'next/navigation';
 import './admin.css';
 import {AdminPrototype} from '@/components/AdminPrototype';
+import {AdminPlaybook} from '@/components/AdminPlaybook';
 import {AdminUserManagement} from '@/components/AdminUserManagement';
 import {TaskAdminList,TaskAdminNew} from '@/components/TaskAdminFlow';
 import {requireAdmin} from '@/lib/auth/admin';
@@ -28,6 +29,7 @@ async function renderAdmin(trace:ServerTrace,{params,searchParams}:{params:Promi
     return <TaskAdminNew key={`${preset??''}:${editId??''}`} tasks={data.tasks} preset={preset} editId={editId}/>;
   }
   if(path==='tasks')return <TaskAdminList tasks={data.tasks}/>;
+  if(path==='playbook')return <AdminPlaybook/>;
   return <AdminPrototype slug={slug} initialData={data} query={query}/>;
 }
 
