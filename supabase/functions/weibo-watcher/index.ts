@@ -35,6 +35,11 @@ const ACCOUNTS:Record<string,Rule>={
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const COVER_BUCKET='content-images';
 const ALERT_DAILY_LIMIT=5; // Server酱 free tier; the last one is kept for watcher failures.
+// pg_cron calls every minute, but Weibo's risk control flagged a once-a-minute session within
+// minutes, so a scan only runs 150–210 s after the previous one (about every 3–4 minutes)...
+const SCAN_GAP_MS=150_000,SCAN_JITTER_MS=60_000;
+// ...and after 2+ failures in a row it waits 30 min, then 1 h, 2 h, up to 4 h between attempts.
+const backoffMs=(failures:number)=>failures<2?0:Math.min(30*2**(failures-2),240)*60_000;
 const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 
@@ -74,9 +79,10 @@ async function parse(post:Post):Promise<Parsed>{
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
   const co=src.cooperate_info;
   const brands=co?co.cooperate_user_list.filter(u=>!ACCOUNTS[u.idstr]).map(brandName):[];
-  // Reposts: the account's own comment reads best; fall back to the reposted post's text.
+  // Reposts: the account's own comment reads best; fall back to the reposted post's text. The feed's
+  // preview normally holds the first sentence, so the full text is only fetched when it doesn't.
   const own=repost?firstSentence(post.text):'';
-  const sentence=own&&!/^转发微博/.test(own)?own:firstSentence(await fullText(src));
+  const sentence=own&&!/^转发微博/.test(own)?own:firstSentence(src.text)||(src.isLongText?firstSentence(await fullText(src)):'');
   return {post,src,repost,live:!repost&&post.page_info?.type==='live',cocreate:Boolean(co),brands,sentence};
 }
 const postUrl=(p:Post)=>`https://weibo.com/${p.user?.id}/${p.bid??p.id}`;
@@ -190,9 +196,19 @@ async function scanAccount(uid:string){
 
 Deno.serve(async req=>{
   if(req.headers.get('x-watcher-key')!==Deno.env.get('WATCHER_KEY'))return new Response('forbidden',{status:403});
-  const {data:settings,error:settingsError}=await db.from('weibo_watcher_settings').select('enabled,failing').single();
+  const {data:settings,error:settingsError}=await db.from('weibo_watcher_settings').select('enabled,failing,updated_at').single();
   if(settingsError)return Response.json({error:`读取监控设置失败：${settingsError.message}`},{status:500});
   if(!settings.enabled)return Response.json({skipped:'disabled'});
+  const {data:recentScans}=await db.from('weibo_scan_log').select('scanned_at,ok').order('scanned_at',{ascending:false}).limit(12);
+  if(recentScans?.length){
+    const sinceLast=Date.now()-new Date(recentScans[0].scanned_at).getTime();
+    // Failures before the admin last flipped the switch don't count, so off-and-on (e.g. after a
+    // cookie refresh) retries straight away.
+    const counted=recentScans.filter(scan=>new Date(scan.scanned_at)>new Date(settings.updated_at));
+    const failuresInRow=counted.findIndex(scan=>scan.ok);
+    const wait=Math.max(SCAN_GAP_MS+Math.random()*SCAN_JITTER_MS,backoffMs(failuresInRow<0?counted.length:failuresInRow));
+    if(sinceLast<wait)return Response.json({skipped:'waiting',nextInSeconds:Math.round((wait-sinceLast)/1000)});
+  }
   const started=Date.now(),published:{postId:string;title:string;link:string}[]=[],failures:string[]=[];
   try{
     const {data:states}=await db.from('weibo_watch_state').select('uid,last_seen_id');
@@ -228,11 +244,11 @@ Deno.serve(async req=>{
     // Alert once, after two failed scans in a row.
     const {data:recent}=await db.from('weibo_scan_log').select('ok').order('scanned_at',{ascending:false}).limit(2);
     if(!settings.failing&&recent?.length===2&&recent.every(r=>!r.ok)){
-      await db.from('weibo_watcher_settings').update({failing:true,updated_at:new Date().toISOString()}).eq('id',true);
+      await db.from('weibo_watcher_settings').update({failing:true}).eq('id',true);
       await alert('failed','微博监控失败',`${failure}\n\n如果是登录过期，请更新 WEIBO_COOKIE。`);
     }
   }else if(settings.failing){
-    await db.from('weibo_watcher_settings').update({failing:false,updated_at:new Date().toISOString()}).eq('id',true);
+    await db.from('weibo_watcher_settings').update({failing:false}).eq('id',true);
     await alert('recovered','微博监控已恢复','扫描恢复正常。');
   }
   return Response.json({ok:!failure,error:failure,published:published.length,ms:Date.now()-started});
