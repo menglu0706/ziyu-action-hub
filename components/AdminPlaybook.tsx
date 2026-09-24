@@ -40,7 +40,13 @@ export function AdminPlaybook(){
         <tr><td>梓渝ZIYU工作室</td><td>只处理原创</td><td>第一句</td><td>无</td><td>原创</td></tr>
         <tr><td><StatusTag tone="blue">共创微博</StatusTag></td><td colSpan={4}>标题固定为「星品共创百万转百万评千万赞」，描述为「品牌名 星品 共创」（如「有棵树 星品 共创」），不生成物料。</td></tr>
       </tbody></table></div>
-      <div className="playbook-note"><b>三条基本规则</b>同一条微博只处理一次；网站上已有相同链接的任务（包括手动添加的）时自动跳过——<b>手动任务优先</b>；网站同一时间只有一个置顶，新任务置顶后，上一个任务取消置顶但仍保留在 /urgent。</div>
+      <div className="playbook-note"><b>基本规则</b>
+        <ul className="playbook-rules">
+          <li>同一条微博只处理一次；网站上已有相同链接的任务（包括手动添加的）时自动跳过——<b>手动任务优先</b>。</li>
+          <li>网站同一时间只有一个置顶。新任务置顶后，上一个任务取消置顶但仍保留在 /urgent。</li>
+          <li><b>「我是梓渝_」优先：</b>如果当前置顶是「我是梓渝_」发布不到 6 小时的微博，另外两个账号的新任务<b>不置顶</b>，而是出现在「进行中的任务」最上方。「我是梓渝_」的新微博始终置顶。</li>
+          <li><b>自动下线：</b>自动生成的任务在创建 24 小时后自动下线（每 5 分钟检查一次）。物料不受影响。手动重新上线后不会再次自动下线。</li>
+        </ul></div>
       <p><b>第一处查看位置：</b>后台首页的「微博监控」卡片——显示运行状态、上次扫描时间、最近错误，以及最近处理过的 10 条微博（带原帖和任务链接）。</p>
     </section></AdminCard>
 
@@ -105,7 +111,8 @@ export function AdminPlaybook(){
         <li>如果同时生成了物料：后台 → <b>物料管理</b>，找到同名物料编辑或删除。</li>
         <li>如果同一类微博反复出错，把<b>原帖链接</b>和<b>希望的标题/描述</b>发给负责人调整规则。</li>
       </Steps>
-      <div className="playbook-note"><b>置顶被抢走？</b>网站只有一个置顶位。新微博会自动占用置顶，原来的置顶任务取消置顶但保留在 /urgent。如需把某个任务重新置顶，编辑该任务打开「首页强制置顶」。</div>
+      <div className="playbook-note"><b>置顶被抢走？</b>网站只有一个置顶位。新微博会自动占用置顶（「我是梓渝_」6 小时内的置顶除外），原来的置顶任务取消置顶但保留在 /urgent。如需把某个任务重新置顶，编辑该任务打开「首页强制置顶」。</div>
+      <div className="playbook-note"><b>自动任务不见了？</b>自动生成的任务 24 小时后会自动下线。在「任务管理 → 已下线」中可以找到，需要的话点「上线」即可，之后不会再自动下线。</div>
     </Mode>
 
     <Mode id="missing" title="⑤ 该发布却没有发布" tag="先看卡片列表" tone="blue">
@@ -159,7 +166,7 @@ export function AdminPlaybook(){
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>项目</th><th>值 / 位置</th></tr></thead><tbody>
         <tr><td>Supabase 项目</td><td>ziyu-action-hub（东京 ap-northeast-1）</td></tr>
         <tr><td>监控函数</td><td>Edge Functions → <code>weibo-watcher</code>（日志也在这里）</td></tr>
-        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟触发，实际约 3–4 分钟扫描一次）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）</td></tr>
+        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟触发，实际约 3–4 分钟扫描一次）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）</td></tr>
         <tr><td>密钥</td><td>保存在 Supabase，由负责人管理，<b>请勿修改或外传</b></td></tr>
         <tr><td>备用微博账号</td><td>由负责人保管</td></tr>
         <tr><td>监控账号</td><td><a href="https://weibo.com/u/8019758392" target="_blank" rel="noreferrer">梓渝的小喇叭0706</a> · <a href="https://weibo.com/u/7352202247" target="_blank" rel="noreferrer">我是梓渝_</a> · <a href="https://weibo.com/u/8009243499" target="_blank" rel="noreferrer">梓渝ZIYU工作室</a></td></tr>

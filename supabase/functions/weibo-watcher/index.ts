@@ -20,6 +20,11 @@ type Parsed={post:Post;src:Post;repost:boolean;live:boolean;cocreate:boolean;bra
 type Rule={name:string;reposts:boolean;media:boolean;title:(p:Parsed)=>string;description:(p:Parsed)=>string|null};
 
 const CO_TITLE='星品共创百万转百万评千万赞';
+// Account 2's task keeps the pinned slot for this long after its post; other accounts' new tasks
+// meanwhile go to the top of the unpinned list instead.
+const PRIORITY_UID='7352202247',PRIORITY_PIN_MS=6*3600e3;
+// Auto tasks go offline this long after creation (migration 019's job does the switch).
+const TASK_TTL_MS=24*3600e3;
 // Short brand names for 共创 co-creators, when cleaning the Weibo screen name isn't enough.
 const BRAND_NAMES:Record<string,string>={'7552817501':'有棵树'};
 const ACCOUNTS:Record<string,Rule>={
@@ -142,6 +147,17 @@ async function mediaWithLink(link:string){
   return data.find(m=>normalizeTaskLink(m.external_url)===link)??null;
 }
 
+// Whether a new task from this account should take the pinned slot: always for account 2, and
+// for the others unless the current pin is account 2's task from a post under 6 hours old.
+async function takesPin(uid:string){
+  if(uid===PRIORITY_UID)return true;
+  const {data:pinned}=await db.from('tasks').select('id').eq('is_pinned',true).eq('status','published').limit(1);
+  if(!pinned?.length)return true;
+  const {data:origin}=await db.from('weibo_ingest').select('uid,posted_at').eq('task_id',pinned[0].id).limit(1);
+  const source=origin?.[0];
+  return !(source?.uid===PRIORITY_UID&&source.posted_at&&Date.now()-new Date(source.posted_at).getTime()<PRIORITY_PIN_MS);
+}
+
 async function handle(uid:string,post:Post){
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
@@ -162,14 +178,17 @@ async function handle(uid:string,post:Post){
     const title=p.cocreate?CO_TITLE:rule.title(p);
     const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:rule.description(p);
     const quick=p.live?'点击进入直播间':repost?'前往原博完成任务':'点击前往原博：转发、评论、点赞';
+    const pin=await takesPin(uid);
+    // An unpinned insert lands at the top of the ongoing list (assign_new_urgent_sort_position).
     const {data:task,error:taskError}=await db.from('tasks').insert({
       title,description,category:p.cocreate?'商务':'其他',platform:'微博',external_url:link,quick_instruction:quick,
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
-      is_pinned:true,show_in_urgent:true,show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:src.id,
+      is_pinned:pin,show_in_urgent:true,show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:src.id,
+      auto_offline_at:new Date(Date.now()+TASK_TTL_MS).toISOString(),
     }).select('id').single();
     if(taskError||!task)throw new Error(`任务创建失败：${taskError?.message??''}`);
-    // One pinned slot: the newest post takes it (the previous task stays on /urgent, unpinned).
-    await db.from('tasks').update({is_pinned:false}).eq('is_pinned',true).neq('id',task.id);
+    // One pinned slot: a pinning task takes it (the previous task stays on /urgent, unpinned).
+    if(pin)await db.from('tasks').update({is_pinned:false}).eq('is_pinned',true).neq('id',task.id);
 
     let mediaId:string|null=null;
     if(rule.media&&!repost&&!p.cocreate&&!p.live&&!await mediaWithLink(normalizeTaskLink(link))){
