@@ -33,7 +33,8 @@ export function AdminPlaybook(){
 
     <AdminCard className="playbook-card"><section id="how">
       <h2>系统怎么运作</h2>
-      <p><code>weibo-watcher</code> 约每 3–4 分钟读取一次下面 3 个账号的最新微博（间隔带随机性，避免被微博风控）。发现新微博后，按规则在 /urgent 生成<b>置顶任务</b>，部分原创微博同时生成 /media 物料。一般发帖后 <b>2–5 分钟</b>网站可见。</p>
+      <p>微博不接受云服务器读取，所以由<b>负责人家用电脑</b>上的读取程序（<code>weibo-relay</code>）约每 3–4 分钟读取一次下面 3 个账号的最新微博，交给 Supabase 的 <code>weibo-watcher</code> 处理。发现新微博后，按规则在 /urgent 生成<b>置顶任务</b>，部分原创微博同时生成 /media 物料。一般发帖后 <b>2–5 分钟</b>网站可见。</p>
+      <p>家用电脑关机、休眠或断网时读取会暂停；超过 15 分钟没有收到扫描会发出「微博监控已停止」提醒。电脑恢复后会自动补发期间的新微博（每个账号最近约 10 条以内）。</p>
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>账号</th><th>处理哪些微博</th><th>任务标题</th><th>描述</th><th>物料</th></tr></thead><tbody>
         <tr><td>梓渝的小喇叭0706</td><td>原创 + 转发</td><td>重要通知：+ 第一句</td><td>无</td><td>无</td></tr>
         <tr><td>我是梓渝_</td><td>原创 + 转发</td><td>原创：宝梓营业啦，快快来！！百万转，百万评！<br/>直播：宝梓直播啦快来！！！！<br/>转发：任务博来啦，快来zzp!</td><td>第一句</td><td>原创（非直播）</td></tr>
@@ -55,7 +56,7 @@ export function AdminPlaybook(){
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>收到的提醒 / 看到的现象</th><th>最可能的原因</th><th>处理</th></tr></thead><tbody>
         <tr><td><StatusTag tone="red">微博监控失败</StatusTag> 错误含「登录已过期或被限制」「返回异常数据」</td><td>备用账号登录失效</td><td><a href="#cookie">① 登录过期</a></td></tr>
         <tr><td><StatusTag tone="red">微博监控失败</StatusTag> 错误含「HTTP 4xx / 5xx」</td><td>微博限流或临时故障</td><td><a href="#ratelimit">② 限流 / 临时故障</a></td></tr>
-        <tr><td>卡片显示「未在运行」（超过 8 分钟没有扫描），且没有显示「扫描失败」</td><td>定时任务停止 / 项目被暂停</td><td><a href="#stopped">③ 监控没有运行</a></td></tr>
+        <tr><td><StatusTag tone="red">微博监控已停止</StatusTag>，或卡片显示「未在运行」</td><td>家用电脑关机 / 断网 / 读取程序被关闭</td><td><a href="#stopped">③ 监控没有运行</a></td></tr>
         <tr><td>网站出现标题或内容不对的任务</td><td>规则不适用于这条微博</td><td><a href="#wrong">④ 撤回与修正</a></td></tr>
         <tr><td>微博发了，网站迟迟没有</td><td>被跳过、处理失败或尚未扫描到</td><td><a href="#missing">⑤ 排查漏发</a></td></tr>
         <tr><td>提醒末尾出现「今日微信提醒额度已用完」</td><td>当天 5 条额度已用完</td><td><a href="#quota">⑥ 额度用完</a></td></tr>
@@ -70,7 +71,7 @@ export function AdminPlaybook(){
       <Steps>
         <li><b>联系负责人更新登录。</b>备用微博账号及其登录方法由负责人保管，其他人无需、也不应尝试登录该账号。</li>
         <li><b>等待期间：</b>如有紧急任务，在后台「发布任务」手动添加。之后自动补发时，若链接相同会自动跳过，不会重复。</li>
-        <li><b>立即重试：</b>负责人更新登录后，在后台首页「微博监控」卡片上把「自动发布」<b>关闭再打开</b>——这会清除自动放慢的等待，1 分钟内重新扫描。</li>
+        <li><b>立即重试：</b>负责人更新登录后，重启家用电脑上的 <code>weibo-relay</code>（关闭窗口后重新运行），会立即重新扫描。</li>
         <li><b>确认恢复：</b>约 2 分钟后，后台卡片应显示「运行中」，并收到「微博监控已恢复」提醒；也可以运行下方<a href="#sql">常用 SQL</a> 中的「最近扫描」，最新几行 <code>ok = true</code>。</li>
       </Steps>
       <div className="playbook-note playbook-note-red"><b>安全提醒</b>任何人向你索要微博 Cookie、登录信息或 Supabase 密钥，都不要提供。本手册不包含、也不应添加任何密钥或账号信息。</div>
@@ -83,15 +84,16 @@ export function AdminPlaybook(){
         <li><b>先等待</b>：监控会自动放慢重试，多数情况会自行恢复并收到「已恢复」提醒。期间可手动添加紧急任务。</li>
         <li>打开 <code>m.weibo.cn</code> 看微博本身是否正常。如果微博全站异常，等待即可。</li>
         <li>超过 2 小时仍未恢复，或错误为 <code>HTTP 403</code>「请求被拒绝」：多半是备用账号被微博风控，<b>联系负责人</b>检查账号（见 <a href="#cookie">①</a>）。</li>
-        <li>负责人处理后，在卡片上把「自动发布」关闭再打开，立即重试。</li>
+        <li>负责人处理后，重启家用电脑上的 <code>weibo-relay</code>，立即重试。</li>
       </Steps>
     </Mode>
 
-    <Mode id="stopped" title="③ 监控没有运行" tag="不会发出失败提醒" tone="red">
-      <Facts rows={[['症状','卡片显示「未在运行」（上次扫描超过 8 分钟）；或微博发了很久网站都没有，也没有收到任何提醒。'],['原因','Supabase 项目被暂停；定时任务被停用；调用密钥不匹配；函数报错。']]}/>
-      <div className="playbook-note playbook-note-gold"><b>注意</b>这种情况下监控本身没有运行，所以<b>不会</b>发出「失败」提醒——只能靠后台卡片或发现网站没更新来察觉。</div>
+    <Mode id="stopped" title="③ 监控没有运行" tag="最先检查家用电脑" tone="red">
+      <Facts rows={[['症状','收到「微博监控已停止」提醒；或卡片显示「未在运行」（上次扫描超过 8 分钟）。'],['原因','最常见：负责人的家用电脑关机、休眠、断网，或 weibo-relay 窗口被关闭。少见：Supabase 项目被暂停、定时任务停用、函数报错。']]}/>
+      <div className="playbook-note playbook-note-gold"><b>注意</b>「微博监控已停止」提醒由 Supabase 每分钟的检查发出。如果 Supabase 本身出问题（项目暂停、定时任务停用），<b>不会</b>有任何提醒——只能靠后台卡片或发现网站没更新来察觉。</div>
       <h3>检查步骤</h3>
       <Steps>
+        <li><b>家用电脑：</b>联系负责人确认电脑开机、联网、没有休眠，并且 <code>weibo-relay</code> 窗口在运行（没有就重新运行）。恢复后几分钟内会收到「微博监控已恢复」。</li>
         <li><b>项目是否被暂停：</b>打开 Supabase Dashboard。如果项目显示 <b>Paused</b>，点击 <b>Restore</b>，等待几分钟。（免费套餐长时间无访问可能被暂停；此时整个网站也无法访问。）</li>
         <li><b>定时任务是否启用：</b>运行下方第 1 段 SQL，确认 <code>active = true</code>；若为 false，运行第 2 段重新启用。</li>
         <li><b>定时任务调用结果：</b>运行第 3 段 SQL：<code>200</code> 正常；<code>403</code> 调用密钥不匹配，联系负责人；<code>500</code> 函数报错，把 <code>content</code> 列截图发给负责人；没有任何记录说明定时任务没有发出请求，检查第 2 步。</li>
@@ -165,8 +167,9 @@ export function AdminPlaybook(){
       <h2>关键信息</h2>
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>项目</th><th>值 / 位置</th></tr></thead><tbody>
         <tr><td>Supabase 项目</td><td>ziyu-action-hub（东京 ap-northeast-1）</td></tr>
-        <tr><td>监控函数</td><td>Edge Functions → <code>weibo-watcher</code>（日志也在这里）</td></tr>
-        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟触发，实际约 3–4 分钟扫描一次）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）</td></tr>
+        <tr><td>读取程序</td><td>负责人家用电脑上的 <code>weibo-relay</code>（约每 3–4 分钟读取一次微博）</td></tr>
+        <tr><td>监控函数</td><td>Edge Functions → <code>weibo-watcher</code>（处理读取结果；日志也在这里）</td></tr>
+        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）</td></tr>
         <tr><td>密钥</td><td>保存在 Supabase，由负责人管理，<b>请勿修改或外传</b></td></tr>
         <tr><td>备用微博账号</td><td>由负责人保管</td></tr>
         <tr><td>监控账号</td><td><a href="https://weibo.com/u/8019758392" target="_blank" rel="noreferrer">梓渝的小喇叭0706</a> · <a href="https://weibo.com/u/7352202247" target="_blank" rel="noreferrer">我是梓渝_</a> · <a href="https://weibo.com/u/8009243499" target="_blank" rel="noreferrer">梓渝ZIYU工作室</a></td></tr>

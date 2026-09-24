@@ -1,10 +1,12 @@
-// Weibo watcher: called once a minute by pg_cron (migration 017). Reads the watched accounts'
-// latest posts from m.weibo.cn as the watcher account (WEIBO_COOKIE), and turns each new post
-// into a pinned /urgent task -- plus a /media item for some -- following the per-account rules
-// below. Every post is handled at most once (weibo_ingest), and a post whose link is already an
-// active task (manual or automatic) is skipped, so manual tasks always win.
+// Weibo watcher. Weibo only accepts the watched accounts' feeds from an ordinary home connection,
+// so a relay script on a home PC (scripts/weibo-relay.mjs) reads them and posts the raw feeds
+// here (mode 'relay'); this function turns each new post into a pinned /urgent task -- plus a
+// /media item for some -- following the per-account rules below. Every post is handled at most
+// once (weibo_ingest), and a post whose link is already an active task (manual or automatic) is
+// skipped, so manual tasks always win. pg_cron's once-a-minute call is a heartbeat that alerts
+// when the relay's scans stop arriving.
 //
-// Secrets: WEIBO_COOKIE, WATCHER_KEY (must match Vault 'weibo_watcher_key'), and optionally
+// Secrets: WATCHER_KEY (shared with the relay and Vault 'weibo_watcher_key'), and optionally
 // SERVERCHAN_KEY for WeChat alerts. Deploy with:
 //   npx supabase functions deploy weibo-watcher --project-ref <ref> --no-verify-jwt --use-api
 import {createClient} from 'npm:@supabase/supabase-js@2';
@@ -37,27 +39,13 @@ const ACCOUNTS:Record<string,Rule>={
     title:p=>p.sentence||'梓渝ZIYU工作室 发布了新微博',description:()=>null},
 };
 
+// Only used to download cover images from Weibo's image CDN (no login involved).
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const COVER_BUCKET='content-images';
 const ALERT_DAILY_LIMIT=5; // Server酱 free tier; the last one is kept for watcher failures.
-// pg_cron calls every minute, but Weibo's risk control flagged a once-a-minute session within
-// minutes, so a scan only runs 150–210 s after the previous one (about every 3–4 minutes)...
-const SCAN_GAP_MS=150_000,SCAN_JITTER_MS=60_000;
-// ...and after 2+ failures in a row it waits 30 min, then 1 h, 2 h, up to 4 h between attempts.
-const backoffMs=(failures:number)=>failures<2?0:Math.min(30*2**(failures-2),240)*60_000;
+// No scans from the home relay for this long means it has stopped.
+const STALE_AFTER_MS=15*60_000;
 const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
-const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
-
-function cookie(){const raw=(Deno.env.get('WEIBO_COOKIE')??'').trim().replace(/^["']|["']$/g,'');return raw.includes('=')?raw:`SUB=${raw}`}
-async function weibo(url:string){
-  const res=await fetch(url,{headers:{'User-Agent':UA,Cookie:cookie(),Referer:'https://m.weibo.cn/','X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'manual'});
-  if(res.status>=300&&res.status<400)throw new Error('微博登录已过期或被限制（请求被重定向）');
-  if(!res.ok)throw new Error(`微博请求失败 HTTP ${res.status}`);
-  const json=await res.json().catch(()=>null);
-  if(!json||json.ok!==1)throw new Error('微博返回异常数据（可能登录已过期）');
-  return json;
-}
-
 // --- Text rules ---------------------------------------------------------------------------
 const plain=(html:string)=>html.replace(/<br\s*\/?>/g,'\n').replace(/<a [^>]*>全文<\/a>/g,'').replace(/<[^>]+>/g,'')
   .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'");
@@ -76,18 +64,14 @@ function firstSentence(html:string){
 }
 const brandName=(u:{idstr:string;screen_name:string})=>BRAND_NAMES[u.idstr]??(u.screen_name.replace(/^[A-Za-z0-9 .&'-]+/,'').replace(/(官方微博|官方|官博)$/,'')||u.screen_name);
 
-async function fullText(post:Post){
-  if(!post.isLongText)return post.text;
-  try{const json=await weibo(`https://m.weibo.cn/statuses/extend?id=${post.id}`);return json.data?.longTextContent??post.text}catch{return post.text}
-}
-async function parse(post:Post):Promise<Parsed>{
+function parse(post:Post):Parsed{
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
   const co=src.cooperate_info;
   const brands=co?co.cooperate_user_list.filter(u=>!ACCOUNTS[u.idstr]).map(brandName):[];
-  // Reposts: the account's own comment reads best; fall back to the reposted post's text. The feed's
-  // preview normally holds the first sentence, so the full text is only fetched when it doesn't.
+  // Reposts: the account's own comment reads best; fall back to the reposted post's text (the feed's
+  // preview, which holds the first sentence).
   const own=repost?firstSentence(post.text):'';
-  const sentence=own&&!/^转发微博/.test(own)?own:firstSentence(src.text)||(src.isLongText?firstSentence(await fullText(src)):'');
+  const sentence=own&&!/^转发微博/.test(own)?own:firstSentence(src.text);
   return {post,src,repost,live:!repost&&post.page_info?.type==='live',cocreate:Boolean(co),brands,sentence};
 }
 const postUrl=(p:Post)=>`https://weibo.com/${p.user?.id}/${p.bid??p.id}`;
@@ -168,7 +152,7 @@ async function handle(uid:string,post:Post){
   if(!claimed?.length)return null;
   try{
     if(repost&&!rule.reposts){await finish({status:'skipped',reason:'该账号只处理原创'});return null}
-    const p=await parse(post);
+    const p=parse(post);
     const kind=p.cocreate?'cocreate':p.live?'live':repost?'repost':'original';
     const link=postUrl(src);
     const {data:earlier}=await db.from('weibo_ingest').select('post_id').eq('source_post_id',src.id).eq('status','published').limit(1);
@@ -206,34 +190,17 @@ async function handle(uid:string,post:Post){
   }
 }
 
-async function scanAccount(uid:string){
-  const json=await weibo(`https://m.weibo.cn/api/container/getIndex?containerid=107603${uid}`);
-  const posts:Post[]=(json.data?.cards??[]).filter((c:{card_type:number})=>c.card_type===9).map((c:{mblog:Post})=>c.mblog)
-    .filter((m:Post)=>m.mblogtype!==2); // profile-pinned post
+type Feed={data?:{cards?:{card_type:number;mblog?:Post}[]}};
+// The feed the home relay read for one account, as posts oldest first (profile-pinned post dropped).
+function postsFrom(feed:Feed|undefined):Post[]{
+  const posts=(feed?.data?.cards??[]).filter(c=>c.card_type===9&&c.mblog).map(c=>c.mblog as Post).filter(m=>m.mblogtype!==2);
   return posts.sort((a,b)=>BigInt(a.id)<BigInt(b.id)?-1:1);
 }
 
-Deno.serve(async req=>{
-  if(req.headers.get('x-watcher-key')!==Deno.env.get('WATCHER_KEY'))return new Response('forbidden',{status:403});
-  // ?test=alert sends one WeChat test message (counts toward the daily quota); it never touches Weibo.
-  if(new URL(req.url).searchParams.get('test')==='alert'){
-    if(!Deno.env.get('SERVERCHAN_KEY'))return Response.json({sent:false,reason:'SERVERCHAN_KEY 未设置'});
-    const sent=await alert('posted','微博监控测试提醒','这是一条测试消息：微博监控的微信提醒已配置成功。');
-    return Response.json({sent,reason:sent?null:'发送失败或今日额度已用完'});
-  }
-  const {data:settings,error:settingsError}=await db.from('weibo_watcher_settings').select('enabled,failing,updated_at').single();
-  if(settingsError)return Response.json({error:`读取监控设置失败：${settingsError.message}`},{status:500});
-  if(!settings.enabled)return Response.json({skipped:'disabled'});
-  const {data:recentScans}=await db.from('weibo_scan_log').select('scanned_at,ok').order('scanned_at',{ascending:false}).limit(12);
-  if(recentScans?.length){
-    const sinceLast=Date.now()-new Date(recentScans[0].scanned_at).getTime();
-    // Failures before the admin last flipped the switch don't count, so off-and-on (e.g. after a
-    // cookie refresh) retries straight away.
-    const counted=recentScans.filter(scan=>new Date(scan.scanned_at)>new Date(settings.updated_at));
-    const failuresInRow=counted.findIndex(scan=>scan.ok);
-    const wait=Math.max(SCAN_GAP_MS+Math.random()*SCAN_JITTER_MS,backoffMs(failuresInRow<0?counted.length:failuresInRow));
-    if(sinceLast<wait)return Response.json({skipped:'waiting',nextInSeconds:Math.round((wait-sinceLast)/1000)});
-  }
+type RelayBody={mode:'relay';feeds?:Record<string,Feed>;errors?:Record<string,string>};
+
+// One scan, from the feeds the home relay just read.
+async function relayScan(body:RelayBody,settings:{failing:boolean}){
   const started=Date.now(),published:{postId:string;title:string;link:string}[]=[],failures:string[]=[];
   try{
     const {data:states}=await db.from('weibo_watch_state').select('uid,last_seen_id');
@@ -241,16 +208,14 @@ Deno.serve(async req=>{
     const fresh:{uid:string;post:Post}[]=[],advance:{uid:string;newest:bigint}[]=[];
     // Each account succeeds or fails on its own; its position only moves once its posts are handled.
     for(const uid of Object.keys(ACCOUNTS)){
-      try{
-        const posts=await scanAccount(uid);
-        if(posts.length){
-          const newest=BigInt(posts[posts.length-1].id),seen=lastSeen.get(uid);
-          // First scan of an account: remember where we are, import nothing.
-          if(seen!==undefined)for(const post of posts)if(BigInt(post.id)>seen)fresh.push({uid,post});
-          if(seen===undefined||newest>seen)advance.push({uid,newest});
-        }
-      }catch(error){failures.push(`${ACCOUNTS[uid].name}：${error instanceof Error?error.message:String(error)}`)}
-      await sleep(800);
+      const relayError=body.errors?.[uid];
+      if(relayError||!body.feeds?.[uid]){failures.push(`${ACCOUNTS[uid].name}：${relayError??'家用电脑没有发送该账号的数据'}`);continue}
+      const posts=postsFrom(body.feeds[uid]);
+      if(!posts.length)continue;
+      const newest=BigInt(posts[posts.length-1].id),seen=lastSeen.get(uid);
+      // First scan of an account: remember where we are, import nothing.
+      if(seen!==undefined)for(const post of posts)if(BigInt(post.id)>seen)fresh.push({uid,post});
+      if(seen===undefined||newest>seen)advance.push({uid,newest});
     }
     // Oldest first across accounts, so an original post is handled before its reposts.
     fresh.sort((a,b)=>BigInt(a.post.id)<BigInt(b.post.id)?-1:1);
@@ -270,11 +235,42 @@ Deno.serve(async req=>{
     const {data:recent}=await db.from('weibo_scan_log').select('ok').order('scanned_at',{ascending:false}).limit(2);
     if(!settings.failing&&recent?.length===2&&recent.every(r=>!r.ok)){
       await db.from('weibo_watcher_settings').update({failing:true}).eq('id',true);
-      await alert('failed','微博监控失败',`${failure}\n\n如果是登录过期，请更新 WEIBO_COOKIE。`);
+      await alert('failed','微博监控失败',`${failure}\n\n如果是登录过期或被拒绝，请联系负责人更新家用电脑上的微博登录。`);
     }
   }else if(settings.failing){
     await db.from('weibo_watcher_settings').update({failing:false}).eq('id',true);
     await alert('recovered','微博监控已恢复','扫描恢复正常。');
   }
   return Response.json({ok:!failure,error:failure,published:published.length,ms:Date.now()-started});
+}
+
+// pg_cron calls this every minute. Weibo is only read by the home relay now, so this just checks
+// that scans keep arriving and alerts once if they stop (PC off, asleep, offline or relay stopped).
+async function heartbeat(settings:{failing:boolean}){
+  const {data:last}=await db.from('weibo_scan_log').select('scanned_at').order('scanned_at',{ascending:false}).limit(1);
+  const lastAt=last?.[0]?.scanned_at;
+  const stale=!lastAt||Date.now()-new Date(lastAt).getTime()>STALE_AFTER_MS;
+  if(stale&&!settings.failing){
+    await db.from('weibo_watcher_settings').update({failing:true}).eq('id',true);
+    await alert('failed','微博监控已停止','超过 15 分钟没有收到家用电脑的扫描结果。请检查电脑是否开机、联网，以及 weibo-relay 是否在运行。');
+  }
+  return Response.json({heartbeat:stale?'stale':'ok',lastScanAt:lastAt??null});
+}
+
+Deno.serve(async req=>{
+  if(req.headers.get('x-watcher-key')!==Deno.env.get('WATCHER_KEY'))return new Response('forbidden',{status:403});
+  // ?test=alert sends one WeChat test message (counts toward the daily quota); it never touches Weibo.
+  if(new URL(req.url).searchParams.get('test')==='alert'){
+    if(!Deno.env.get('SERVERCHAN_KEY'))return Response.json({sent:false,reason:'SERVERCHAN_KEY 未设置'});
+    const sent=await alert('posted','微博监控测试提醒','这是一条测试消息：微博监控的微信提醒已配置成功。');
+    return Response.json({sent,reason:sent?null:'发送失败或今日额度已用完'});
+  }
+  const {data:settings,error:settingsError}=await db.from('weibo_watcher_settings').select('enabled,failing').single();
+  if(settingsError)return Response.json({error:`读取监控设置失败：${settingsError.message}`},{status:500});
+  const body=await req.json().catch(()=>({})) as {mode?:string};
+  // The relay asks first, so a switched-off watcher sends no requests to Weibo at all.
+  if(body.mode==='check')return Response.json({enabled:settings.enabled});
+  if(!settings.enabled)return Response.json({skipped:'disabled'});
+  if(body.mode==='relay')return relayScan(body as RelayBody,settings);
+  return heartbeat(settings);
 });

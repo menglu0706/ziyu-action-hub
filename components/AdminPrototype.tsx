@@ -25,7 +25,8 @@ function ago(value:string|null,hydrated:boolean){if(!value)return '—';if(!hydr
 function WatcherCard({watcher}:{watcher:AdminWatcherStatus}){
   const router=useRouter();const [pending,start]=useTransition();const [notice,setNotice]=useState('');const hydrated=useSyncExternalStore(noSubscribe,()=>true,()=>false);
   const stale=hydrated&&watcher.enabled&&(!watcher.lastScanAt||Date.now()-new Date(watcher.lastScanAt).getTime()>8*60000);
-  const state=!watcher.enabled?['已关闭','gray']:watcher.failing||watcher.lastScanOk===false?['扫描失败','red']:stale?['未在运行','red']:['运行中','green'];
+  // No recent scan means the home relay stopped sending, which is a different fix from failing scans.
+  const state=!watcher.enabled?['已关闭','gray']:stale?['未在运行','red']:watcher.failing||watcher.lastScanOk===false?['扫描失败','red']:['运行中','green'];
   const toggle=(enabled:boolean)=>start(async()=>{const result=await setWatcherEnabled(enabled);setNotice(result.error??(enabled?'✓ 微博监控已开启':'✓ 微博监控已关闭'));router.refresh()});
   return <AdminCard className="watcher-card"><div className="card-heading"><h2>微博监控 <StatusTag tone={state[1] as 'gray'|'red'|'green'}>{state[0]}</StatusTag></h2><Toggle label="自动发布" checked={watcher.enabled} onChange={value=>!pending&&toggle(value)}/></div>
     <p className="muted watcher-meta">上次扫描：{ago(watcher.lastScanAt,hydrated)} · 上次成功：{ago(watcher.lastOkAt,hydrated)}</p>
