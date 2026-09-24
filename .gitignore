@@ -39,3 +39,6 @@ next-env.d.ts
 /work/
 /.pnpm-store/
 *.tsbuildinfo
+
+# Supabase CLI local cache
+supabase/.temp/
