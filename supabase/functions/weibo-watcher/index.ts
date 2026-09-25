@@ -52,6 +52,8 @@ const accountName=(uid:string)=>ACCOUNTS[uid]?.name??UPDATE_ACCOUNTS[uid]?.name?
 // Only used to download cover images from Weibo's image CDN (no login involved).
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const COVER_BUCKET='content-images';
+// Media is tagged by platform on /media, like the team's own items.
+const MEDIA_CATEGORY='微博';
 const ALERT_DAILY_LIMIT=5; // Server酱 free tier; the last one is kept for watcher failures.
 // No scans from the home relay for this long means it has stopped.
 const STALE_AFTER_MS=15*60_000;
@@ -242,7 +244,7 @@ async function handle(uid:string,post:Post,fromTopic=false){
     const wantsMedia=(fromTopic||rule.media&&!p.cocreate&&!p.live)&&!repost&&hasMedia(post);
     if(wantsMedia&&!await mediaWithLink(normalizeTaskLink(link))){
       const {data:media}=await db.from('media_items').insert({
-        title:p.sentence||`${rule.name} 发布了新微博`,category:post.page_info?.type==='video'?'视频':post.pic_num?'图片':'日常',
+        title:p.sentence||`${rule.name} 发布了新微博`,category:MEDIA_CATEGORY,
         published_at:base.posted_at,cover_url:await copyCover(post),external_url:link,is_enabled:true,source_post_id:post.id,
       }).select('id').single();
       mediaId=media?.id??null;
@@ -326,12 +328,12 @@ async function backfillMedia(posts:Post[]){
     const sentence=firstSentence(post.text);
     const existing=await mediaWithLink(normalizeTaskLink(link));
     if(existing){
-      // Re-sending a post refreshes the title of the media item it already has.
-      if(sentence)await db.from('media_items').update({title:sentence}).eq('id',existing.id);
-      skipped.push(`${post.id}：物料已存在${sentence?'，已更新标题':''}`);continue;
+      // Re-sending a post refreshes the title and tag of the media item it already has.
+      await db.from('media_items').update({category:MEDIA_CATEGORY,...(sentence?{title:sentence}:{})}).eq('id',existing.id);
+      skipped.push(`${post.id}：物料已存在，已更新标题和分类`);continue;
     }
     const {error}=await db.from('media_items').insert({
-      title:sentence||`${rule.name} 发布了新微博`,category:post.page_info?.type==='video'?'视频':post.pic_num?'图片':'日常',
+      title:sentence||`${rule.name} 发布了新微博`,category:MEDIA_CATEGORY,
       published_at:new Date(post.created_at).toISOString(),cover_url:await copyCover(post),external_url:link,is_enabled:true,source_post_id:post.id,
     });
     if(error)skipped.push(`${post.id}：${error.message}`);else created.push(sentence||post.id);
@@ -375,5 +377,10 @@ Deno.serve(async req=>{
   if(!settings.enabled)return Response.json({skipped:'disabled'});
   if(body.mode==='relay')return relayScan(body as RelayBody,settings);
   if(body.mode==='backfill-media')return backfillMedia((body as {posts?:Post[]}).posts??[]);
+  // Retags every media item the watcher created (source_post_id set) with MEDIA_CATEGORY.
+  if(body.mode==='retag-media'){
+    const {data,error}=await db.from('media_items').update({category:MEDIA_CATEGORY}).not('source_post_id','is',null).neq('category',MEDIA_CATEGORY).select('id,title');
+    return Response.json(error?{error:error.message}:{retagged:(data??[]).map(m=>m.title)});
+  }
   return heartbeat(settings);
 });
