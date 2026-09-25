@@ -61,7 +61,7 @@ async function getWatcherStatus(db:Awaited<ReturnType<typeof createClient>>):Pro
     db.from('weibo_watcher_settings').select('enabled,failing').maybeSingle(),
     db.from('weibo_scan_log').select('scanned_at,ok,error').order('scanned_at',{ascending:false}).limit(1).maybeSingle(),
     db.from('weibo_scan_log').select('scanned_at').eq('ok',true).order('scanned_at',{ascending:false}).limit(1).maybeSingle(),
-    db.from('weibo_ingest').select('post_id,uid,kind,status,reason,title,task_id,created_at').order('created_at',{ascending:false}).limit(10)
+    db.from('weibo_ingest').select('post_id,uid,kind,status,reason,title,task_id,created_at').neq('status','skipped').order('created_at',{ascending:false}).limit(10)
   ]);
   if(settings.error||!settings.data)return null;
   return {

@@ -121,7 +121,7 @@ export function AdminPlaybook(){
     </Mode>
 
     <Mode id="missing" title="⑤ 该发布却没有发布" tag="先看卡片列表" tone="blue">
-      <p>先在后台首页「微博监控」卡片的<b>最近处理</b>列表中找这条微博（可点「原帖」核对）。</p>
+      <p>先在后台首页「微博监控」卡片的列表中找这条微博（可点「原帖」核对）。卡片只显示<b>已发布、失败和处理中</b>的微博；被<b>跳过</b>的微博不在卡片里，请运行下方<a href="#sql">常用 SQL</a> 中的「今天失败或跳过的微博」查看跳过原因。</p>
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>列表中的状态</th><th>含义</th><th>需要做什么</th></tr></thead><tbody>
         <tr><td><StatusTag tone="green">已发布</StatusTag></td><td>已生成任务</td><td>若网站仍看不到，等 1 分钟缓存刷新后再看</td></tr>
         <tr><td><StatusTag tone="gray">跳过</StatusTag> 该账号只处理原创</td><td>工作室账号的转发，按规则忽略</td><td>无需处理；确实需要就手动添加</td></tr>
