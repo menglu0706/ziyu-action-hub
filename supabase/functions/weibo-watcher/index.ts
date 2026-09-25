@@ -13,7 +13,7 @@ import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
 
 type Post={
-  id:string;bid?:string;created_at:string;text:string;isLongText?:boolean;mblogtype?:number;pic_num?:number;
+  id:string;bid?:string;created_at:string;text:string;source?:string;isLongText?:boolean;mblogtype?:number;pic_num?:number;
   pics?:{url:string;large?:{url:string}}[];page_info?:{type?:string;page_pic?:{url?:string}};
   user?:{id:number;screen_name?:string};retweeted_status?:Post;
   cooperate_info?:{owner_uid:number;cooperate_user_list:{idstr:string;screen_name:string}[]};
@@ -152,6 +152,8 @@ async function takesPin(uid:string){
   return !(source?.uid===PRIORITY_UID&&source.posted_at&&Date.now()-new Date(source.posted_at).getTime()<PRIORITY_PIN_MS);
 }
 
+const isRedPacket=(post:Post)=>post.source==='粉丝红包'||post.page_info?.type==='hongbao';
+
 async function handle(uid:string,post:Post){
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
@@ -162,6 +164,8 @@ async function handle(uid:string,post:Post){
   if(!claimed?.length)return null;
   try{
     if(repost&&!rule.reposts){await finish({status:'skipped',reason:'该账号只处理原创'});return null}
+    // 我是梓渝_'s posts that Weibo generates when a fan red packet is sent aren't tasks.
+    if(uid===PRIORITY_UID&&!repost&&isRedPacket(post)){await finish({status:'skipped',reason:'系统生成的红包微博'});return null}
     const p=parse(post);
     const kind=p.cocreate?'cocreate':p.live?'live':repost?'repost':'original';
     const link=postUrl(src);

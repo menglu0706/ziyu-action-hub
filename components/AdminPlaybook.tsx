@@ -123,6 +123,7 @@ export function AdminPlaybook(){
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>列表中的状态</th><th>含义</th><th>需要做什么</th></tr></thead><tbody>
         <tr><td><StatusTag tone="green">已发布</StatusTag></td><td>已生成任务</td><td>若网站仍看不到，等 1 分钟缓存刷新后再看</td></tr>
         <tr><td><StatusTag tone="gray">跳过</StatusTag> 该账号只处理原创</td><td>工作室账号的转发，按规则忽略</td><td>无需处理；确实需要就手动添加</td></tr>
+        <tr><td><StatusTag tone="gray">跳过</StatusTag> 系统生成的红包微博</td><td>「我是梓渝_」发粉丝红包时微博自动生成的微博，按规则忽略</td><td>无需处理；确实需要就手动添加</td></tr>
         <tr><td><StatusTag tone="gray">跳过</StatusTag> 同一原帖已生成任务</td><td>这条微博转发的原帖之前已经生成过任务</td><td>无需处理</td></tr>
         <tr><td><StatusTag tone="gray">跳过</StatusTag> 已存在相同链接的任务</td><td>网站上已有指向同一微博的任务（常见于已手动添加）</td><td>无需处理——手动任务优先</td></tr>
         <tr><td><StatusTag tone="red">失败</StatusTag></td><td>处理时出错，原因显示在下方</td><td>手动添加该任务；把原因截图发给负责人</td></tr>
