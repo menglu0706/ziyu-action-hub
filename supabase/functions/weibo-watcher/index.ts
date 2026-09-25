@@ -188,7 +188,7 @@ async function handle(uid:string,post:Post){
     if(rule.media&&!repost&&!p.cocreate&&!p.live&&!await mediaWithLink(normalizeTaskLink(link))){
       const {data:media}=await db.from('media_items').insert({
         title:p.sentence||`${rule.name} 发布了新微博`,category:post.page_info?.type==='video'?'视频':post.pic_num?'图片':'日常',
-        published_at:base.posted_at,cover_url:await copyCover(post),external_url:link,is_new:true,is_enabled:true,source_post_id:post.id,
+        published_at:base.posted_at,cover_url:await copyCover(post),external_url:link,is_enabled:true,source_post_id:post.id,
       }).select('id').single();
       mediaId=media?.id??null;
     }
