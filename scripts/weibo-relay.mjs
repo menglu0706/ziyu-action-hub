@@ -113,7 +113,7 @@ for(;;){
       // Night pause set by Supabase; resume a few random minutes after it ends. Re-check every
       // 30 minutes at most, so a change to the quiet hours takes effect.
       const wait=Math.min(resumeInMs+Math.random()*180_000,30*60_000);
-      console.log(`[${now()}] 夜间暂停（北京时间 1:00–9:00），约 ${Math.round(resumeInMs/60000)} 分钟后恢复`);
+      console.log(`[${now()}] 夜间暂停（北京时间 1:00–8:00），约 ${Math.round(resumeInMs/60000)} 分钟后恢复`);
       await sleep(wait);continue;
     }
     // After a gap of over 30 minutes (night pause, PC asleep, restart) read a second page too.

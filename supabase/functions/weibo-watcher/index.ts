@@ -55,9 +55,10 @@ const COVER_BUCKET='content-images';
 const ALERT_DAILY_LIMIT=5; // Server酱 free tier; the last one is kept for watcher failures.
 // No scans from the home relay for this long means it has stopped.
 const STALE_AFTER_MS=15*60_000;
-// The watched accounts rarely post between 01:00 and 09:00 Beijing time, so the relay doesn't read
-// Weibo then; posts from the night are caught up by the first scan after 09:00.
-const QUIET_START_HOUR=1,QUIET_END_HOUR=9;
+// The watched accounts post nothing that can't wait between 01:00 and 08:00 Beijing time (月之必要's
+// 打榜任务 list comes around 08:00), so the relay doesn't read Weibo then; the first scan after
+// 08:00 catches up on the night's posts.
+const QUIET_START_HOUR=1,QUIET_END_HOUR=8;
 const BEIJING_OFFSET_MS=8*3600e3;
 function quietWindow(now=Date.now()){
   const beijing=new Date(now+BEIJING_OFFSET_MS),hour=beijing.getUTCHours();
@@ -67,7 +68,8 @@ function quietWindow(now=Date.now()){
 }
 const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
 // --- Text rules ---------------------------------------------------------------------------
-const plain=(html:string)=>html.replace(/<br\s*\/?>/g,'\n').replace(/<a [^>]*>全文<\/a>/g,'').replace(/<[^>]+>/g,'')
+// Web-link cards (shown as 网页链接) and 超话 tag cards are dropped: neither reads as text.
+const plain=(html:string)=>html.replace(/<a [^>]*href="[^"]*(?:sinaurl|\/p\/index|\/p\/100808)[^"]*"[^>]*>[\s\S]*?<\/a>/g,'').replace(/<br\s*\/?>/g,'\n').replace(/<a [^>]*>全文<\/a>/g,'').replace(/<[^>]+>/g,'')
   .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'");
 // Trailing hashtag lists are dropped; inline hashtags keep their words; @mentions, links,
 // video/live labels, leading 📣 and "通知：" labels are removed, as is a repost's "//@name:" chain.
@@ -168,7 +170,12 @@ const hasMedia=(post:Post)=>Boolean(post.pic_num)||post.page_info?.type==='video
 
 // A post's whole text as one tidy line for 一句话最快做法: links, @mentions, repost chains and
 // trailing hashtag lists removed, inline hashtags kept as words, line breaks become spaces.
-const taskText=(html:string)=>clean(plain(html)).split('\n').map(s=>s.trim()).filter(s=>meaningful(s)).join(' ').replace(/\s+/g,' ').trim().slice(0,500);
+// With startAt, text before the first line matching it (e.g. a greeting) is dropped.
+const taskText=(html:string,startAt?:RegExp)=>{
+  const lines=clean(plain(html)).split('\n').map(s=>s.trim()).filter(s=>meaningful(s));
+  const first=startAt?Math.max(0,lines.findIndex(line=>startAt.test(line))):0;
+  return lines.slice(first).join(' ').replace(/\s+/g,' ').trim().slice(0,500);
+};
 
 async function handleUpdate(uid:string,post:Post){
   const rule=UPDATE_ACCOUNTS[uid];
@@ -179,7 +186,7 @@ async function handleUpdate(uid:string,post:Post){
   const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'update',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
   if(!claimed?.length)return null;
   try{
-    const content=taskText(html);
+    const content=taskText(html,rule.keywords);
     if(!content){await finish({status:'skipped',reason:'微博没有可用的文字'});return null}
     const {data:task,error}=await db.from('tasks').select('id,title,quick_instruction').eq('id',rule.taskId).maybeSingle();
     if(error||!task)throw new Error('要更新的日常任务不存在，请检查监控设置');

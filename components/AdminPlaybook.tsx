@@ -34,7 +34,7 @@ export function AdminPlaybook(){
     <AdminCard className="playbook-card"><section id="how">
       <h2>系统怎么运作</h2>
       <p>微博不接受云服务器读取，所以由<b>负责人家用电脑</b>上的读取程序（<code>weibo-relay</code>）约每 3–4 分钟读取一次下面 3 个账号的最新微博，交给 Supabase 的 <code>weibo-watcher</code> 处理。发现新微博后，按规则在 /urgent 生成<b>置顶任务</b>，部分原创微博同时生成 /media 物料。一般发帖后 <b>2–5 分钟</b>网站可见。</p>
-      <p><b>夜间暂停：</b>北京时间 1:00–9:00 不读取微博（这段时间 3 个账号很少发博），卡片显示「夜间暂停」，也不会发出「已停止」提醒。夜间发布的微博会在 9:00 后的第一次扫描中补发。</p>
+      <p><b>夜间暂停：</b>北京时间 1:00–8:00 不读取微博（这段时间的微博都可以延后处理），卡片显示「夜间暂停」，也不会发出「已停止」提醒。夜间发布的微博会在 8:00 后的第一次扫描中补发。</p>
       <p>家用电脑关机、休眠或断网时读取会暂停；超过 15 分钟没有收到扫描会发出「微博监控已停止」提醒。电脑恢复后会自动补发期间的新微博（每个账号最近约 10 条以内）。</p>
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>账号</th><th>处理哪些微博</th><th>任务标题</th><th>描述</th><th>物料</th></tr></thead><tbody>
         <tr><td>梓渝的小喇叭0706</td><td>原创 + 转发</td><td>重要通知：+ 第一句</td><td>无</td><td>无</td></tr>

@@ -24,9 +24,9 @@ const noSubscribe=()=>()=>{};
 function ago(value:string|null,hydrated:boolean){if(!value)return '—';if(!hydrated)return '…';const minutes=Math.round((Date.now()-new Date(value).getTime())/60000);return minutes<1?'刚刚':minutes<60?`${minutes}分钟前`:minutes<1440?`${Math.round(minutes/60)}小时前`:`${Math.round(minutes/1440)}天前`}
 function WatcherCard({watcher}:{watcher:AdminWatcherStatus}){
   const router=useRouter();const [pending,start]=useTransition();const [notice,setNotice]=useState('');const hydrated=useSyncExternalStore(noSubscribe,()=>true,()=>false);
-  // Weibo isn't read 01:00–09:00 Beijing time (see the weibo-watcher function); the night doesn't count as stale.
-  const beijing=new Date(Date.now()+8*3600e3),beijingHour=beijing.getUTCHours(),quiet=hydrated&&beijingHour>=1&&beijingHour<9;
-  const resumedAt=Date.UTC(beijing.getUTCFullYear(),beijing.getUTCMonth(),beijing.getUTCDate(),9)-8*3600e3;
+  // Weibo isn't read 01:00–08:00 Beijing time (see the weibo-watcher function); the night doesn't count as stale.
+  const beijing=new Date(Date.now()+8*3600e3),beijingHour=beijing.getUTCHours(),quiet=hydrated&&beijingHour>=1&&beijingHour<8;
+  const resumedAt=Date.UTC(beijing.getUTCFullYear(),beijing.getUTCMonth(),beijing.getUTCDate(),8)-8*3600e3;
   const lastActivity=Math.max(watcher.lastScanAt?new Date(watcher.lastScanAt).getTime():0,Date.now()>=resumedAt?resumedAt:0);
   const stale=hydrated&&watcher.enabled&&!quiet&&Date.now()-lastActivity>8*60000;
   // No recent scan means the home relay stopped sending, which is a different fix from failing scans.
