@@ -73,7 +73,7 @@ const plain=(html:string)=>html.replace(/<a [^>]*href="[^"]*(?:sinaurl|\/p\/inde
   .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'");
 // Trailing hashtag lists are dropped; inline hashtags keep their words; @mentions, links,
 // video/live labels, leading 📣 and "通知：" labels are removed, as is a repost's "//@name:" chain.
-const clean=(text:string)=>text.replace(/\[语音(\d+)"\]\s*请用最新版手机微博app收听原声分享语音/g,'发了一条 $1 秒的语音。').replace(/\/\/\s*@[\s\S]*$/,'').replace(/(\s*#[^#\n]+#)+\s*$/gm,'').replace(/#([^#\n]+)#/g,'$1').replace(/@[\w一-龥-]+/g,'')
+const clean=(text:string)=>text.replace(/\[语音(\d+)"\]\s*请用最新版手机微博app收听原声\s*(?:分享语音)?/g,'发了一条 $1 秒的语音。').replace(/\/\/\s*@[\s\S]*$/,'').replace(/(\s*#[^#\n]+#)+\s*$/gm,'').replace(/#([^#\n]+)#/g,'$1').replace(/@[\w一-龥-]+/g,'')
   .replace(/https?:\/\/\S+/g,'').replace(/\S+的微博(视频|直播)/g,'').replace(/^[\s📣🔔📢]+/gmu,'').replace(/^(重要通知|通知|公告)[：:]\s*/gm,'').replace(/[ \t]+/g,' ');
 const meaningful=(s:string)=>(s.match(/[一-龥A-Za-z0-9]/g)??[]).length;
 function firstSentence(html:string){
@@ -315,6 +315,30 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
   return Response.json({ok:!failure,error:failure,published:published.length,ms:Date.now()-started});
 }
 
+// Adds /media items (no tasks, no pins) for specific posts the watcher missed, e.g. ones from before
+// a feed was first watched. Same media rules and duplicate check as a normal scan.
+async function backfillMedia(posts:Post[]){
+  const created:string[]=[],skipped:string[]=[];
+  for(const post of posts){
+    const uid=String(post.user?.id),rule=ACCOUNTS[uid];
+    const link=postUrl(post);
+    if(!rule||post.retweeted_status||!hasMedia(post)){skipped.push(`${post.id}：不符合物料规则`);continue}
+    const sentence=firstSentence(post.text);
+    const existing=await mediaWithLink(normalizeTaskLink(link));
+    if(existing){
+      // Re-sending a post refreshes the title of the media item it already has.
+      if(sentence)await db.from('media_items').update({title:sentence}).eq('id',existing.id);
+      skipped.push(`${post.id}：物料已存在${sentence?'，已更新标题':''}`);continue;
+    }
+    const {error}=await db.from('media_items').insert({
+      title:sentence||`${rule.name} 发布了新微博`,category:post.page_info?.type==='video'?'视频':post.pic_num?'图片':'日常',
+      published_at:new Date(post.created_at).toISOString(),cover_url:await copyCover(post),external_url:link,is_enabled:true,source_post_id:post.id,
+    });
+    if(error)skipped.push(`${post.id}：${error.message}`);else created.push(sentence||post.id);
+  }
+  return Response.json({created,skipped});
+}
+
 // pg_cron calls this every minute. Weibo is only read by the home relay now, so this just checks
 // that scans keep arriving and alerts once if they stop (PC off, asleep, offline or relay stopped).
 async function heartbeat(settings:{failing:boolean}){
@@ -350,5 +374,6 @@ Deno.serve(async req=>{
   }
   if(!settings.enabled)return Response.json({skipped:'disabled'});
   if(body.mode==='relay')return relayScan(body as RelayBody,settings);
+  if(body.mode==='backfill-media')return backfillMedia((body as {posts?:Post[]}).posts??[]);
   return heartbeat(settings);
 });
