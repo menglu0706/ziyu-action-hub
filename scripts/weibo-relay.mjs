@@ -54,6 +54,23 @@ async function readFeeds(){
   }catch(error){return {error:`无法连接微博：${error.message}`}}
 }
 
+// 我是梓渝_'s posts inside the 梓渝 超话 never reach followers' feeds, so the 超话 page is read too.
+// Only his posts are kept; fans' posts on the page are dropped here and never sent anywhere.
+const TOPIC_KEY='topic:梓渝超话',TOPIC_CONTAINER='100808b605a0014c09819072d77e8e4798710b',TOPIC_AUTHOR='7352202247';
+async function readTopic(){
+  try{
+    const res=await fetch(`https://m.weibo.cn/api/container/getIndex?containerid=${TOPIC_CONTAINER}`,{headers:{'User-Agent':UA,Cookie:env.WEIBO_COOKIE,Referer:'https://m.weibo.cn/','X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'manual'});
+    if(res.status>=300&&res.status<400)return {error:'微博登录已过期或被限制（请求被重定向）'};
+    if(!res.ok)return {error:`微博请求失败 HTTP ${res.status}`};
+    const json=await res.json().catch(()=>null);
+    if(!json||json.ok!==1)return {error:'微博返回异常数据（可能登录已过期）'};
+    const posts=new Map();
+    const walk=cards=>{for(const card of cards??[]){if(card.mblog&&String(card.mblog.user?.id)===TOPIC_AUTHOR)posts.set(card.mblog.id,card.mblog);walk(card.card_group)}};
+    walk(json.data?.cards);
+    return {feed:{data:{cards:[...posts.values()].map(mblog=>({card_type:9,mblog}))}}};
+  }catch(error){return {error:`无法连接微博：${error.message}`}}
+}
+
 let failuresInRow=0;
 console.log(`[${now()}] weibo-relay 已启动（按 Ctrl+C 停止）`);
 for(;;){
@@ -69,9 +86,13 @@ for(;;){
     }
     const read=await readFeeds();
     const feeds=read.feeds??{},errors=read.error?Object.fromEntries(Object.keys(ACCOUNTS).map(uid=>[uid,read.error])):{};
+    await sleep(1000+Math.random()*2000);
+    const topic=await readTopic();
+    if(topic.feed)feeds[TOPIC_KEY]=topic.feed;else errors[TOPIC_KEY]=topic.error;
     const result=await watcher({mode:'relay',feeds,errors});
-    failuresInRow=Object.keys(errors).length?failuresInRow+1:0;
-    const failed=Object.entries(errors).map(([uid,message])=>`${ACCOUNTS[uid]}：${message}`).join('；');
+    // Back off only when the main feed is refused; a 超话 problem is reported but doesn't slow it down.
+    failuresInRow=read.error?failuresInRow+1:0;
+    const failed=Object.entries(errors).map(([uid,message])=>`${ACCOUNTS[uid]??"梓渝超话"}：${message}`).join('；');
     console.log(`[${now()}] ${failed?`失败 - ${failed}`:`正常，新发布 ${result.published??0} 条`}`);
   }catch(error){
     // Supabase unreachable (e.g. the PC just woke up): try again at the normal pace.

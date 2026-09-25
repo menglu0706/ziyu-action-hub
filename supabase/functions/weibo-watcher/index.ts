@@ -22,6 +22,9 @@ type Parsed={post:Post;src:Post;repost:boolean;live:boolean;cocreate:boolean;bra
 type Rule={name:string;reposts:boolean;media:boolean;title:(p:Parsed)=>string;description:(p:Parsed)=>string|null};
 
 const CO_TITLE='星品共创百万转百万评千万赞';
+// 我是梓渝_'s posts inside the 梓渝 超话 arrive as their own feed under this key (also its
+// weibo_watch_state row); they get this title and the post's first sentence as description.
+const TOPIC_KEY='topic:梓渝超话',TOPIC_TITLE='宝梓超话营业啦，快来！！';
 // Account 2's task keeps the pinned slot for this long after its post; other accounts' new tasks
 // meanwhile go to the top of the unpinned list instead.
 const PRIORITY_UID='7352202247',PRIORITY_PIN_MS=6*3600e3;
@@ -61,14 +64,14 @@ const plain=(html:string)=>html.replace(/<br\s*\/?>/g,'\n').replace(/<a [^>]*>�
   .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'");
 // Trailing hashtag lists are dropped; inline hashtags keep their words; @mentions, links,
 // video/live labels, leading 📣 and "通知：" labels are removed, as is a repost's "//@name:" chain.
-const clean=(text:string)=>text.replace(/\/\/\s*@[\s\S]*$/,'').replace(/(\s*#[^#\n]+#)+\s*$/gm,'').replace(/#([^#\n]+)#/g,'$1').replace(/@[\w一-龥-]+/g,'')
+const clean=(text:string)=>text.replace(/\[语音(\d+)"\]\s*请用最新版手机微博app收听原声分享语音/g,'发了一条 $1 秒的语音。').replace(/\/\/\s*@[\s\S]*$/,'').replace(/(\s*#[^#\n]+#)+\s*$/gm,'').replace(/#([^#\n]+)#/g,'$1').replace(/@[\w一-龥-]+/g,'')
   .replace(/https?:\/\/\S+/g,'').replace(/\S+的微博(视频|直播)/g,'').replace(/^[\s📣🔔📢]+/gmu,'').replace(/^(重要通知|通知|公告)[：:]\s*/gm,'').replace(/[ \t]+/g,' ');
 const meaningful=(s:string)=>(s.match(/[一-龥A-Za-z0-9]/g)??[]).length;
 function firstSentence(html:string){
   const lines=clean(plain(html)).split('\n').map(s=>s.trim()).filter(s=>meaningful(s));
   let line=lines[0]??'';
   if(meaningful(line)<4&&lines[1])line=`${line}${lines[1]}`;
-  const s=(line.match(/^.*?[。！？!?]/u)?.[0]??line).trim();
+  const s=(line.match(/^.*?[。！？!?]+/u)?.[0]??line).trim();
   if(meaningful(s)<2)return '';
   return s.length>30?`${s.slice(0,30)}…`:s;
 }
@@ -153,28 +156,31 @@ async function takesPin(uid:string){
 }
 
 const isRedPacket=(post:Post)=>post.source==='粉丝红包'||post.page_info?.type==='hongbao';
+const isVoice=(post:Post)=>/\[语音\d+(?:&quot;|")\]/.test(post.text)||post.page_info?.type==='audio';
+const hasMedia=(post:Post)=>Boolean(post.pic_num)||post.page_info?.type==='video'||isVoice(post);
 
-async function handle(uid:string,post:Post){
+// fromTopic: a post 我是梓渝_ made inside the 梓渝 超话, which never reaches followers' feeds.
+async function handle(uid:string,post:Post,fromTopic=false){
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
   const base={post_id:post.id,uid,source_post_id:src.id,posted_at:new Date(post.created_at).toISOString()};
   const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
   // Claim the post; a concurrent or repeated run finds the row and stops here.
-  const {data:claimed}=await db.from('weibo_ingest').insert({...base,kind:repost?'repost':'original',status:'processing'}).select('post_id');
+  const {data:claimed}=await db.from('weibo_ingest').insert({...base,kind:fromTopic?'topic':repost?'repost':'original',status:'processing'}).select('post_id');
   if(!claimed?.length)return null;
   try{
     if(repost&&!rule.reposts){await finish({status:'skipped',reason:'该账号只处理原创'});return null}
     // 我是梓渝_'s posts that Weibo generates when a fan red packet is sent aren't tasks.
     if(uid===PRIORITY_UID&&!repost&&isRedPacket(post)){await finish({status:'skipped',reason:'系统生成的红包微博'});return null}
     const p=parse(post);
-    const kind=p.cocreate?'cocreate':p.live?'live':repost?'repost':'original';
+    const kind=p.cocreate?'cocreate':p.live?'live':fromTopic?'topic':repost?'repost':'original';
     const link=postUrl(src);
     const {data:earlier}=await db.from('weibo_ingest').select('post_id').eq('source_post_id',src.id).eq('status','published').limit(1);
     if(earlier?.length){await finish({kind,status:'skipped',reason:'同一原帖已生成任务'});return null}
     if(await activeTaskWithLink(normalizeTaskLink(link))){await finish({kind,status:'skipped',reason:'已存在相同链接的任务'});return null}
 
-    const title=p.cocreate?CO_TITLE:rule.title(p);
-    const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:rule.description(p);
+    const title=p.cocreate?CO_TITLE:fromTopic?TOPIC_TITLE:rule.title(p);
+    const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:fromTopic?p.sentence||null:rule.description(p);
     const quick=p.live?'点击进入直播间':repost?'前往原博完成任务':'点击前往原博：转发、评论、点赞';
     const pin=await takesPin(uid);
     // An unpinned insert lands at the top of the ongoing list (assign_new_urgent_sort_position).
@@ -189,7 +195,9 @@ async function handle(uid:string,post:Post){
     if(pin)await db.from('tasks').update({is_pinned:false}).eq('is_pinned',true).neq('id',task.id);
 
     let mediaId:string|null=null;
-    if(rule.media&&!repost&&!p.cocreate&&!p.live&&!await mediaWithLink(normalizeTaskLink(link))){
+    // Only posts with photos, video or voice become media; text-only posts never do.
+    const wantsMedia=(fromTopic||rule.media&&!p.cocreate&&!p.live)&&!repost&&hasMedia(post);
+    if(wantsMedia&&!await mediaWithLink(normalizeTaskLink(link))){
       const {data:media}=await db.from('media_items').insert({
         title:p.sentence||`${rule.name} 发布了新微博`,category:post.page_info?.type==='video'?'视频':post.pic_num?'图片':'日常',
         published_at:base.posted_at,cover_url:await copyCover(post),external_url:link,is_enabled:true,source_post_id:post.id,
@@ -219,22 +227,28 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
   try{
     const {data:states}=await db.from('weibo_watch_state').select('uid,last_seen_id');
     const lastSeen=new Map((states??[]).map(s=>[s.uid,BigInt(s.last_seen_id)]));
-    const fresh:{uid:string;post:Post}[]=[],advance:{uid:string;newest:bigint}[]=[];
-    // Each account succeeds or fails on its own; its position only moves once its posts are handled.
+    const fresh:{uid:string;post:Post;fromTopic:boolean}[]=[],advance:{key:string;newest:bigint}[]=[];
+    // Each feed succeeds or fails on its own; its position only moves once its posts are handled.
+    const collect=(key:string,uid:string,feed:Feed,fromTopic:boolean)=>{
+      const posts=postsFrom(feed).filter(m=>String(m.user?.id)===uid);
+      if(!posts.length)return;
+      const newest=BigInt(posts[posts.length-1].id),seen=lastSeen.get(key);
+      // First scan of a feed: remember where we are, import nothing.
+      if(seen!==undefined)for(const post of posts)if(BigInt(post.id)>seen)fresh.push({uid,post,fromTopic});
+      if(seen===undefined||newest>seen)advance.push({key,newest});
+    };
     for(const uid of Object.keys(ACCOUNTS)){
       const relayError=body.errors?.[uid];
       if(relayError||!body.feeds?.[uid]){failures.push(`${ACCOUNTS[uid].name}：${relayError??'家用电脑没有发送该账号的数据'}`);continue}
-      const posts=postsFrom(body.feeds[uid]);
-      if(!posts.length)continue;
-      const newest=BigInt(posts[posts.length-1].id),seen=lastSeen.get(uid);
-      // First scan of an account: remember where we are, import nothing.
-      if(seen!==undefined)for(const post of posts)if(BigInt(post.id)>seen)fresh.push({uid,post});
-      if(seen===undefined||newest>seen)advance.push({uid,newest});
+      collect(uid,uid,body.feeds[uid],false);
     }
-    // Oldest first across accounts, so an original post is handled before its reposts.
+    // The 超话 feed is optional (older relays don't send it), but its errors count.
+    if(body.errors?.[TOPIC_KEY])failures.push(`梓渝超话：${body.errors[TOPIC_KEY]}`);
+    else if(body.feeds?.[TOPIC_KEY])collect(TOPIC_KEY,PRIORITY_UID,body.feeds[TOPIC_KEY],true);
+    // Oldest first across feeds, so an original post is handled before its reposts.
     fresh.sort((a,b)=>BigInt(a.post.id)<BigInt(b.post.id)?-1:1);
-    for(const {uid,post} of fresh){const result=await handle(uid,post);if(result)published.push(result)}
-    for(const {uid,newest} of advance)await db.from('weibo_watch_state').upsert({uid,last_seen_id:newest.toString(),updated_at:new Date().toISOString()});
+    for(const {uid,post,fromTopic} of fresh){const result=await handle(uid,post,fromTopic);if(result)published.push(result)}
+    for(const {key,newest} of advance)await db.from('weibo_watch_state').upsert({uid:key,last_seen_id:newest.toString(),updated_at:new Date().toISOString()});
   }catch(error){failures.push(error instanceof Error?error.message:String(error))}
   const failure=failures.length?failures.join('；'):null;
 
