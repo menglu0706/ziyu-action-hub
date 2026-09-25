@@ -45,6 +45,16 @@ const COVER_BUCKET='content-images';
 const ALERT_DAILY_LIMIT=5; // Server酱 free tier; the last one is kept for watcher failures.
 // No scans from the home relay for this long means it has stopped.
 const STALE_AFTER_MS=15*60_000;
+// The watched accounts rarely post between 01:00 and 09:00 Beijing time, so the relay doesn't read
+// Weibo then; posts from the night are caught up by the first scan after 09:00.
+const QUIET_START_HOUR=1,QUIET_END_HOUR=9;
+const BEIJING_OFFSET_MS=8*3600e3;
+function quietWindow(now=Date.now()){
+  const beijing=new Date(now+BEIJING_OFFSET_MS),hour=beijing.getUTCHours();
+  const dayStart=Date.UTC(beijing.getUTCFullYear(),beijing.getUTCMonth(),beijing.getUTCDate())-BEIJING_OFFSET_MS;
+  const end=dayStart+QUIET_END_HOUR*3600e3;
+  return {quiet:hour>=QUIET_START_HOUR&&hour<QUIET_END_HOUR,end};
+}
 const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
 // --- Text rules ---------------------------------------------------------------------------
 const plain=(html:string)=>html.replace(/<br\s*\/?>/g,'\n').replace(/<a [^>]*>全文<\/a>/g,'').replace(/<[^>]+>/g,'')
@@ -247,9 +257,13 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
 // pg_cron calls this every minute. Weibo is only read by the home relay now, so this just checks
 // that scans keep arriving and alerts once if they stop (PC off, asleep, offline or relay stopped).
 async function heartbeat(settings:{failing:boolean}){
+  const night=quietWindow();
+  if(night.quiet)return Response.json({heartbeat:'quiet'});
   const {data:last}=await db.from('weibo_scan_log').select('scanned_at').order('scanned_at',{ascending:false}).limit(1);
   const lastAt=last?.[0]?.scanned_at;
-  const stale=!lastAt||Date.now()-new Date(lastAt).getTime()>STALE_AFTER_MS;
+  // Silence during the night doesn't count: measure from 09:00 if the last scan was before it.
+  const since=Math.max(lastAt?new Date(lastAt).getTime():0,Date.now()>=night.end?night.end:0);
+  const stale=Date.now()-since>STALE_AFTER_MS;
   if(stale&&!settings.failing){
     await db.from('weibo_watcher_settings').update({failing:true}).eq('id',true);
     await alert('failed','微博监控已停止','超过 15 分钟没有收到家用电脑的扫描结果。请检查电脑是否开机、联网，以及 weibo-relay 是否在运行。');
@@ -269,7 +283,10 @@ Deno.serve(async req=>{
   if(settingsError)return Response.json({error:`读取监控设置失败：${settingsError.message}`},{status:500});
   const body=await req.json().catch(()=>({})) as {mode?:string};
   // The relay asks first, so a switched-off watcher sends no requests to Weibo at all.
-  if(body.mode==='check')return Response.json({enabled:settings.enabled});
+  if(body.mode==='check'){
+    const night=quietWindow();
+    return Response.json({enabled:settings.enabled,quiet:night.quiet,resumeInMs:night.quiet?night.end-Date.now():0});
+  }
   if(!settings.enabled)return Response.json({skipped:'disabled'});
   if(body.mode==='relay')return relayScan(body as RelayBody,settings);
   return heartbeat(settings);

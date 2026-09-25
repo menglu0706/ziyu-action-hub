@@ -24,9 +24,13 @@ const noSubscribe=()=>()=>{};
 function ago(value:string|null,hydrated:boolean){if(!value)return '—';if(!hydrated)return '…';const minutes=Math.round((Date.now()-new Date(value).getTime())/60000);return minutes<1?'刚刚':minutes<60?`${minutes}分钟前`:minutes<1440?`${Math.round(minutes/60)}小时前`:`${Math.round(minutes/1440)}天前`}
 function WatcherCard({watcher}:{watcher:AdminWatcherStatus}){
   const router=useRouter();const [pending,start]=useTransition();const [notice,setNotice]=useState('');const hydrated=useSyncExternalStore(noSubscribe,()=>true,()=>false);
-  const stale=hydrated&&watcher.enabled&&(!watcher.lastScanAt||Date.now()-new Date(watcher.lastScanAt).getTime()>8*60000);
+  // Weibo isn't read 01:00–09:00 Beijing time (see the weibo-watcher function); the night doesn't count as stale.
+  const beijing=new Date(Date.now()+8*3600e3),beijingHour=beijing.getUTCHours(),quiet=hydrated&&beijingHour>=1&&beijingHour<9;
+  const resumedAt=Date.UTC(beijing.getUTCFullYear(),beijing.getUTCMonth(),beijing.getUTCDate(),9)-8*3600e3;
+  const lastActivity=Math.max(watcher.lastScanAt?new Date(watcher.lastScanAt).getTime():0,Date.now()>=resumedAt?resumedAt:0);
+  const stale=hydrated&&watcher.enabled&&!quiet&&Date.now()-lastActivity>8*60000;
   // No recent scan means the home relay stopped sending, which is a different fix from failing scans.
-  const state=!watcher.enabled?['已关闭','gray']:stale?['未在运行','red']:watcher.failing||watcher.lastScanOk===false?['扫描失败','red']:['运行中','green'];
+  const state=!watcher.enabled?['已关闭','gray']:quiet?['夜间暂停','gray']:stale?['未在运行','red']:watcher.failing||watcher.lastScanOk===false?['扫描失败','red']:['运行中','green'];
   const toggle=(enabled:boolean)=>start(async()=>{const result=await setWatcherEnabled(enabled);setNotice(result.error??(enabled?'✓ 微博监控已开启':'✓ 微博监控已关闭'));router.refresh()});
   return <AdminCard className="watcher-card"><div className="card-heading"><h2>微博监控 <StatusTag tone={state[1] as 'gray'|'red'|'green'}>{state[0]}</StatusTag></h2><Toggle label="自动发布" checked={watcher.enabled} onChange={value=>!pending&&toggle(value)}/></div>
     <p className="muted watcher-meta">上次扫描：{ago(watcher.lastScanAt,hydrated)} · 上次成功：{ago(watcher.lastOkAt,hydrated)}</p>

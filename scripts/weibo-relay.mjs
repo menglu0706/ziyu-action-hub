@@ -53,8 +53,15 @@ let failuresInRow=0;
 console.log(`[${now()}] weibo-relay 已启动（按 Ctrl+C 停止）`);
 for(;;){
   try{
-    const {enabled}=await watcher({mode:'check'});
+    const {enabled,quiet,resumeInMs}=await watcher({mode:'check'});
     if(!enabled){console.log(`[${now()}] 自动发布已关闭，暂不读取微博`);await sleep(180_000);continue}
+    if(quiet){
+      // Night pause set by Supabase; resume a few random minutes after it ends. Re-check every
+      // 30 minutes at most, so a change to the quiet hours takes effect.
+      const wait=Math.min(resumeInMs+Math.random()*180_000,30*60_000);
+      console.log(`[${now()}] 夜间暂停（北京时间 1:00–9:00），约 ${Math.round(resumeInMs/60000)} 分钟后恢复`);
+      await sleep(wait);continue;
+    }
     const feeds={},errors={};
     for(const uid of Object.keys(ACCOUNTS)){
       const result=await readFeed(uid);
