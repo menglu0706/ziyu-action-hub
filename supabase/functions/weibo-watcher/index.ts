@@ -13,7 +13,7 @@ import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
 
 type Post={
-  id:string;bid?:string;created_at:string;text:string;source?:string;isLongText?:boolean;mblogtype?:number;pic_num?:number;
+  id:string;bid?:string;created_at:string;text:string;source?:string;isLongText?:boolean;longText?:string;mblogtype?:number;pic_num?:number;
   pics?:{url:string;large?:{url:string}}[];page_info?:{type?:string;page_pic?:{url?:string}};
   user?:{id:number;screen_name?:string};retweeted_status?:Post;
   cooperate_info?:{owner_uid:number;cooperate_user_list:{idstr:string;screen_name:string}[]};
@@ -41,6 +41,13 @@ const ACCOUNTS:Record<string,Rule>={
   '8009243499':{name:'梓渝ZIYU工作室',reposts:false,media:true,
     title:p=>p.sentence||'梓渝ZIYU工作室 发布了新微博',description:()=>null},
 };
+// Accounts whose matching original posts rewrite an existing task's 一句话最快做法 instead of
+// creating tasks. Their other posts and reposts are ignored without a log entry. The relay
+// attaches the full text of long posts (longText) for these accounts.
+const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>={
+  '6179787120':{name:'月之必要',taskId:'f6eda702-5e58-4a4f-92e9-cbb372dd4f69',keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
+};
+const accountName=(uid:string)=>ACCOUNTS[uid]?.name??UPDATE_ACCOUNTS[uid]?.name??uid;
 
 // Only used to download cover images from Weibo's image CDN (no login involved).
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
@@ -159,8 +166,37 @@ const isRedPacket=(post:Post)=>post.source==='粉丝红包'||post.page_info?.typ
 const isVoice=(post:Post)=>/\[语音\d+(?:&quot;|")\]/.test(post.text)||post.page_info?.type==='audio';
 const hasMedia=(post:Post)=>Boolean(post.pic_num)||post.page_info?.type==='video'||isVoice(post);
 
+// A post's whole text as one tidy line for 一句话最快做法: links, @mentions, repost chains and
+// trailing hashtag lists removed, inline hashtags kept as words, line breaks become spaces.
+const taskText=(html:string)=>clean(plain(html)).split('\n').map(s=>s.trim()).filter(s=>meaningful(s)).join(' ').replace(/\s+/g,' ').trim().slice(0,500);
+
+async function handleUpdate(uid:string,post:Post){
+  const rule=UPDATE_ACCOUNTS[uid];
+  if(post.retweeted_status)return null;
+  const html=post.longText??post.text;
+  if(!rule.keywords.test(plain(html)))return null;
+  const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
+  const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'update',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
+  if(!claimed?.length)return null;
+  try{
+    const content=taskText(html);
+    if(!content){await finish({status:'skipped',reason:'微博没有可用的文字'});return null}
+    const {data:task,error}=await db.from('tasks').select('id,title,quick_instruction').eq('id',rule.taskId).maybeSingle();
+    if(error||!task)throw new Error('要更新的日常任务不存在，请检查监控设置');
+    if(sameText(task.quick_instruction,content)){await finish({status:'skipped',reason:'内容相同，无需更新',task_id:task.id});return null}
+    const previous=task.quick_instruction;
+    const {error:updateError}=await db.from('tasks').update({quick_instruction:content,updated_at:new Date().toISOString()}).eq('id',task.id);
+    if(updateError)throw new Error(`任务更新失败：${updateError.message}`);
+    // The previous text is kept in the log, so an update can be undone by hand.
+    await finish({status:'published',title:`更新：${task.title}`,task_id:task.id,reason:`原一句话最快做法：${previous}`});
+  }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
+  return null; // task updates don't send WeChat alerts
+}
+const sameText=(a:string|null,b:string|null)=>(a??'').replace(/\s+/g,'')===(b??'').replace(/\s+/g,'');
+
 // fromTopic: a post 我是梓渝_ made inside the 梓渝 超话, which never reaches followers' feeds.
 async function handle(uid:string,post:Post,fromTopic=false){
+  if(UPDATE_ACCOUNTS[uid])return handleUpdate(uid,post);
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
   const base={post_id:post.id,uid,source_post_id:src.id,posted_at:new Date(post.created_at).toISOString()};
@@ -237,9 +273,9 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
       if(seen!==undefined)for(const post of posts)if(BigInt(post.id)>seen)fresh.push({uid,post,fromTopic});
       if(seen===undefined||newest>seen)advance.push({key,newest});
     };
-    for(const uid of Object.keys(ACCOUNTS)){
+    for(const uid of [...Object.keys(ACCOUNTS),...Object.keys(UPDATE_ACCOUNTS)]){
       const relayError=body.errors?.[uid];
-      if(relayError||!body.feeds?.[uid]){failures.push(`${ACCOUNTS[uid].name}：${relayError??'家用电脑没有发送该账号的数据'}`);continue}
+      if(relayError||!body.feeds?.[uid]){failures.push(`${accountName(uid)}：${relayError??'家用电脑没有发送该账号的数据'}`);continue}
       collect(uid,uid,body.feeds[uid],false);
     }
     // The 超话 feed is optional (older relays don't send it), but its errors count.

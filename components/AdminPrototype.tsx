@@ -17,8 +17,8 @@ function ErrorNotice({data}:{data:AdminInitialData}){return data.error?<AdminCar
 
 function UtilityRail({tasks}:{tasks:AdminTask[]}){const router=useRouter();const actions=[['🔥','发布紧急任务','red','/admin/tasks/new?preset=urgent'],['▣','发布日常任务','blue','/admin/tasks/new?preset=daily'],['▧','发布物料','purple','/admin/media?create=1'],['●','发布小Tips','green','/admin/guides?create=1&type=tip'],['↗','发布快捷入口','blue','/admin/quick-links?create=1'],['▤','发布模板 / 尾巴','blue','/admin/templates?create=1']];return <><AdminCard><h3 className="utility-title">⚡ 快捷发布</h3><div className="quick-action-grid">{actions.map(([i,x,c,href])=><button key={x} className={c} onClick={()=>router.push(href)}>{i} {x}</button>)}</div></AdminCard><AdminCard><h3 className="utility-title">最近发布 <Link href="/admin/tasks">查看全部</Link></h3>{tasks.slice(0,5).map(t=><div className="recent-row" key={t.id}><i className={tone(t.category)}/><span>{t.title}</span><StatusTag tone={tone(t.urgency)}>{t.urgency}</StatusTag><small>{t.deadline}</small></div>)}</AdminCard></>}
 
-const WATCHED_NAMES:Record<string,string>={'8019758392':'小喇叭','7352202247':'我是梓渝_','8009243499':'工作室'};
-const WATCHER_KIND:Record<string,string>={original:'原创',repost:'转发',cocreate:'共创',live:'直播'};
+const WATCHED_NAMES:Record<string,string>={'8019758392':'小喇叭','7352202247':'我是梓渝_','8009243499':'工作室','6179787120':'月之必要'};
+const WATCHER_KIND:Record<string,string>={original:'原创',repost:'转发',cocreate:'共创',live:'直播',topic:'超话',update:'更新任务'};
 const noSubscribe=()=>()=>{};
 // Relative times depend on the viewer's clock, so they render only after hydration.
 function ago(value:string|null,hydrated:boolean){if(!value)return '—';if(!hydrated)return '…';const minutes=Math.round((Date.now()-new Date(value).getTime())/60000);return minutes<1?'刚刚':minutes<60?`${minutes}分钟前`:minutes<1440?`${Math.round(minutes/60)}小时前`:`${Math.round(minutes/1440)}天前`}

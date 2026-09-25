@@ -10,7 +10,9 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const WATCHER_URL='https://enwmacfmwqaqghyiqskj.supabase.co/functions/v1/weibo-watcher';
-const ACCOUNTS={'8019758392':'梓渝的小喇叭0706','7352202247':'我是梓渝_','8009243499':'梓渝ZIYU工作室'};
+const ACCOUNTS={'8019758392':'梓渝的小喇叭0706','7352202247':'我是梓渝_','8009243499':'梓渝ZIYU工作室','6179787120':'月之必要'};
+// Accounts whose long posts need their full text (月之必要's 打榜任务 lists replace a task's text).
+const FULL_TEXT_ACCOUNTS=new Set(['6179787120']);
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 // A scan every 150-210 s; after 2+ refused scans in a row, 30 min, 1 h, 2 h, up to 4 h apart.
 const nextGapMs=failuresInRow=>failuresInRow<2?150_000+Math.random()*60_000:Math.min(30*2**(failuresInRow-2),240)*60_000;
@@ -40,18 +42,48 @@ async function watcher(body){
 // (the latest ~20 posts, about 10 days' worth) covers all of them -- a third of the traffic of
 // reading each profile, and the same as a person scrolling their feed. Returns per-account feeds
 // in the shape the watcher expects, or {error} with the texts the admin card and playbook describe.
-async function readFeeds(){
+// pages=2 after a long gap (the night pause, a restart), so a busy night can't push posts past page 1.
+async function getJson(url){
+  const res=await fetch(url,{headers:{'User-Agent':UA,Cookie:env.WEIBO_COOKIE,Referer:'https://m.weibo.cn/','X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'manual'});
+  if(res.status>=300&&res.status<400)return {error:'微博登录已过期或被限制（请求被重定向）'};
+  if(!res.ok)return {error:`微博请求失败 HTTP ${res.status}`};
+  const json=await res.json().catch(()=>null);
+  if(!json||json.ok!==1)return {error:'微博返回异常数据（可能登录已过期）'};
+  return {json};
+}
+async function readFeeds(pages=1){
   try{
-    const res=await fetch('https://m.weibo.cn/feed/friends',{headers:{'User-Agent':UA,Cookie:env.WEIBO_COOKIE,Referer:'https://m.weibo.cn/','X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'manual'});
-    if(res.status>=300&&res.status<400)return {error:'微博登录已过期或被限制（请求被重定向）'};
-    if(!res.ok)return {error:`微博请求失败 HTTP ${res.status}`};
-    const json=await res.json().catch(()=>null);
-    if(!json||json.ok!==1)return {error:'微博返回异常数据（可能登录已过期）'};
+    const statuses=[];let maxId='';
+    for(let page=0;page<pages;page++){
+      if(page)await sleep(1000+Math.random()*2000);
+      const {json,error}=await getJson(`https://m.weibo.cn/feed/friends${maxId?`?max_id=${maxId}`:''}`);
+      if(error)return {error};
+      statuses.push(...(json.data?.statuses??[]));
+      maxId=json.data?.max_id_str??json.data?.max_id??'';
+      if(!maxId||maxId==='0')break;
+    }
     const feeds=Object.fromEntries(Object.keys(ACCOUNTS).map(uid=>[uid,{data:{cards:[]}}]));
     // Posts from anyone else the spare account follows are ignored.
-    for(const mblog of json.data?.statuses??[]){const uid=String(mblog.user?.id);if(feeds[uid])feeds[uid].data.cards.push({card_type:9,mblog})}
+    for(const mblog of statuses){const uid=String(mblog.user?.id);if(feeds[uid])feeds[uid].data.cards.push({card_type:9,mblog})}
+    await attachFullText(feeds);
     return {feeds};
   }catch(error){return {error:`无法连接微博：${error.message}`}}
+}
+
+// Long posts arrive cut off ("全文"); fetch the full text once per post for FULL_TEXT_ACCOUNTS,
+// at most 3 per scan. A failed fetch leaves the preview and is retried next scan.
+const fullTextCache=new Map();
+async function attachFullText(feeds){
+  let fetched=0;
+  for(const uid of FULL_TEXT_ACCOUNTS)for(const {mblog} of feeds[uid]?.data.cards??[]){
+    if(!mblog.isLongText||mblog.retweeted_status)continue;
+    if(!fullTextCache.has(mblog.id)&&fetched<3){
+      fetched++;await sleep(800+Math.random()*1500);
+      const {json}=await getJson(`https://m.weibo.cn/statuses/extend?id=${mblog.id}`).catch(()=>({}));
+      if(json?.data?.longTextContent)fullTextCache.set(mblog.id,json.data.longTextContent);
+    }
+    if(fullTextCache.has(mblog.id))mblog.longText=fullTextCache.get(mblog.id);
+  }
 }
 
 // 我是梓渝_'s posts inside the 梓渝 超话 never reach followers' feeds, so the 超话 page is read too.
@@ -71,7 +103,7 @@ async function readTopic(){
   }catch(error){return {error:`无法连接微博：${error.message}`}}
 }
 
-let failuresInRow=0;
+let failuresInRow=0,lastReadAt=0;
 console.log(`[${now()}] weibo-relay 已启动（按 Ctrl+C 停止）`);
 for(;;){
   try{
@@ -84,7 +116,9 @@ for(;;){
       console.log(`[${now()}] 夜间暂停（北京时间 1:00–9:00），约 ${Math.round(resumeInMs/60000)} 分钟后恢复`);
       await sleep(wait);continue;
     }
-    const read=await readFeeds();
+    // After a gap of over 30 minutes (night pause, PC asleep, restart) read a second page too.
+    const read=await readFeeds(Date.now()-lastReadAt>30*60_000?2:1);
+    if(!read.error)lastReadAt=Date.now();
     const feeds=read.feeds??{},errors=read.error?Object.fromEntries(Object.keys(ACCOUNTS).map(uid=>[uid,read.error])):{};
     await sleep(1000+Math.random()*2000);
     const topic=await readTopic();
