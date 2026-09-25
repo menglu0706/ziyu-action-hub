@@ -36,16 +36,21 @@ async function watcher(body){
   return res.json();
 }
 
-// Returns {feed} or {error}; the error texts match what the admin card and playbook describe.
-async function readFeed(uid){
+// The spare account follows only the watched accounts, so one request to its own following feed
+// (the latest ~20 posts, about 10 days' worth) covers all of them -- a third of the traffic of
+// reading each profile, and the same as a person scrolling their feed. Returns per-account feeds
+// in the shape the watcher expects, or {error} with the texts the admin card and playbook describe.
+async function readFeeds(){
   try{
-    const res=await fetch(`https://m.weibo.cn/api/container/getIndex?containerid=107603${uid}`,{headers:{'User-Agent':UA,Cookie:env.WEIBO_COOKIE,Referer:'https://m.weibo.cn/','X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'manual'});
+    const res=await fetch('https://m.weibo.cn/feed/friends',{headers:{'User-Agent':UA,Cookie:env.WEIBO_COOKIE,Referer:'https://m.weibo.cn/','X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'manual'});
     if(res.status>=300&&res.status<400)return {error:'微博登录已过期或被限制（请求被重定向）'};
     if(!res.ok)return {error:`微博请求失败 HTTP ${res.status}`};
     const json=await res.json().catch(()=>null);
     if(!json||json.ok!==1)return {error:'微博返回异常数据（可能登录已过期）'};
-    // Only the posts are needed; drop the rest of the page data.
-    return {feed:{data:{cards:json.data?.cards??[]}}};
+    const feeds=Object.fromEntries(Object.keys(ACCOUNTS).map(uid=>[uid,{data:{cards:[]}}]));
+    // Posts from anyone else the spare account follows are ignored.
+    for(const mblog of json.data?.statuses??[]){const uid=String(mblog.user?.id);if(feeds[uid])feeds[uid].data.cards.push({card_type:9,mblog})}
+    return {feeds};
   }catch(error){return {error:`无法连接微博：${error.message}`}}
 }
 
@@ -62,12 +67,8 @@ for(;;){
       console.log(`[${now()}] 夜间暂停（北京时间 1:00–9:00），约 ${Math.round(resumeInMs/60000)} 分钟后恢复`);
       await sleep(wait);continue;
     }
-    const feeds={},errors={};
-    for(const uid of Object.keys(ACCOUNTS)){
-      const result=await readFeed(uid);
-      if(result.feed)feeds[uid]=result.feed;else errors[uid]=result.error;
-      await sleep(1000+Math.random()*2000);
-    }
+    const read=await readFeeds();
+    const feeds=read.feeds??{},errors=read.error?Object.fromEntries(Object.keys(ACCOUNTS).map(uid=>[uid,read.error])):{};
     const result=await watcher({mode:'relay',feeds,errors});
     failuresInRow=Object.keys(errors).length?failuresInRow+1:0;
     const failed=Object.entries(errors).map(([uid,message])=>`${ACCOUNTS[uid]}：${message}`).join('；');
