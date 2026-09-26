@@ -41,8 +41,9 @@ export function heatText(html:string){
 // Whether a 加热 account's post becomes a 加热 task, and which kind. Only a repost, or an original
 // post that links to other posts, can be one, and never a 星品 post. Then, in this order:
 //   空瓶 (a fight, 控评 / 空): its own text has one of KONG_MARKERS, or it links to comments;
-//   红膏 (broadcasting good news): its own text mentions POSITIVE_KEYWORDS, or it reposts or links a
-//     post by one of ziyuUids (梓渝's own accounts and brands);
+//   红膏 (broadcasting good news): it reposts or links a post by one of ziyuUids (梓渝's own accounts
+//     and brands), or its own text mentions POSITIVE_KEYWORDS together with one of HEAT_MARKERS (a
+//     梓渝 mention alone, e.g. a 打榜 push, is not a 加热 call);
 //   空瓶: its own text has one of HEAT_MARKERS. A hashtag alone isn't an instruction, and the
 //     reposted post's text doesn't count.
 // A repost of a repost (its text carries the "//@name:" chain) is ignored, as is anything else.
@@ -53,7 +54,7 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
   const own=plain(html);
   if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
   const kong=KONG_MARKERS.test(own)||linksComments(html);
-  const positive=!kong&&(POSITIVE_KEYWORDS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
+  const positive=!kong&&(POSITIVE_KEYWORDS.test(own)&&HEAT_MARKERS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
   if(!positive&&!fight)return {skip:'没有梓渝关键词或加热指令'};
   return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:withHeatNotice(heatText(html))};
