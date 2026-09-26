@@ -34,7 +34,7 @@ export default async function HeatPreview({searchParams}:{searchParams:Promise<{
   const posts=fromCrawlSource?(crawl as CrawlRow[]).map(fromCrawl):samples as Sample[];
   const time=(post:Sample)=>new Date(post.created_at).getTime();
   // "Now" for the lifetimes: the newest crawled post, or the real now for samples (all live).
-  const asOf=fromCrawlSource?Math.max(...posts.map(time)):Date.now(),listedUrls=new Set<string>();
+  const asOf=fromCrawlSource?Math.max(...posts.map(time)):Date.now(),listedUrls=new Set<string>(),repostedOriginals=new Map<string,string>();
   const rows=[...posts].sort((a,b)=>time(a)-time(b)).map(post=>{
     const url=postUrl(post.user.id,post.bid),rt=post.retweeted_status;
     const result=classifyHeat(post,ZIYU_UIDS);
@@ -42,7 +42,9 @@ export default async function HeatPreview({searchParams}:{searchParams:Promise<{
     const ends=(fromCrawlSource?time(post):asOf)+heatTtl(result.kind);
     if(ends<=asOf)return {post,url,outcome:`${result.kind}，但已过 ${heatTtl(result.kind)/3600e3} 小时（已下线）`,task:null};
     if(rt&&listedUrls.has(postUrl(rt.user.id,rt.bid)))return {post,url,outcome:'忽略：原帖已在加热列表',task:null};
+    if(rt&&repostedOriginals.has(rt.bid))return {post,url,outcome:`忽略：同一原帖已有加热任务（${repostedOriginals.get(rt.bid)}）`,task:null};
     listedUrls.add(url);
+    if(rt)repostedOriginals.set(rt.bid,post.bid);
     // Shift the window onto the real clock so the cards' countdowns read as they would have at asOf.
     const deadline=new Date(Date.now()+ends-asOf).toISOString();
     const task:Task={id:post.id,title:heatTitle(post.user.screen_name,result.kind),platform:'微博',category:'其他',urgency:100,required:100,minutes:1,deadline,

@@ -222,6 +222,16 @@ async function handleUpdate(uid:string,post:Post){
 }
 // 梓渝's own accounts and brands: a 加热 post pointing at one of their posts is 红膏.
 const ZIYU_UIDS=new Set([...Object.keys(ACCOUNTS),...Object.keys(BRAND_NAMES)]);
+// Whether another post's live 加热 task reposts the post sourceId (weibo_ingest keeps each 加热
+// repost's original as its source_post_id).
+async function liveHeatRepostOf(sourceId:string,exceptPostId:string){
+  const {data:earlier}=await db.from('weibo_ingest').select('task_id').eq('kind','heat').eq('status','published').eq('source_post_id',sourceId).neq('post_id',exceptPostId).not('task_id','is',null);
+  const ids=(earlier??[]).map(row=>row.task_id as string);
+  if(!ids.length)return false;
+  const {data:live}=await db.from('tasks').select('id').in('id',ids).eq('status','published').eq('show_in_heat',true).or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`).limit(1);
+  return Boolean(live?.length);
+}
+
 // Takes offline the watcher-made 加热 tasks that /heat no longer shows (pickHeat: originals first,
 // newest first, at least 2 of each kind). Tasks made in admin are never rotated out.
 async function rotateHeat(){
@@ -242,14 +252,18 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
   const deadline=new Date(new Date(post.created_at).getTime()+heatTtl(heat.kind));
   if(deadline.getTime()<=Date.now())return `忽略：${heat.kind}已超过 ${heatTtl(heat.kind)/3600e3} 小时`;
   const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
-  const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
+  const rt=post.retweeted_status;
+  // source_post_id is the post a 加热 call is about: the reposted post for a repost, else itself.
+  const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:rt?.id??post.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
   if(!claimed?.length)return '已处理过';
   try{
-    const link=postUrl(post),rt=post.retweeted_status;
+    const link=postUrl(post);
     const skip=async(reason:string)=>{await finish({status:'skipped',reason});return `跳过：${reason}`};
     if(await activeTaskWithLink(normalizeTaskLink(link),true))return skip('已存在相同链接的加热任务');
     // A repost of a post that is already on /heat (e.g. another 加热 account's own post) adds nothing.
     if(rt&&await activeTaskWithLink(normalizeTaskLink(postUrl(rt)),true))return skip('原帖已在加热列表');
+    // Nor does a repost of a post another account's live 加热 repost already points at: the first wins.
+    if(rt&&await liveHeatRepostOf(rt.id,post.id))return skip('同一原帖已有加热任务');
     const name=post.user?.screen_name||HEAT_ACCOUNTS[uid].name;
     const title=heatTitle(name,heat.kind);
     const {data:task,error}=await db.from('tasks').insert({
