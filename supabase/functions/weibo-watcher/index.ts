@@ -229,14 +229,16 @@ async function handleHeat(uid:string,post:Post){
   const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
   if(!claimed?.length)return null;
   try{
-    const link=postUrl(post);
+    const link=postUrl(post),rt=post.retweeted_status;
     if(await activeTaskWithLink(normalizeTaskLink(link),true)){await finish({status:'skipped',reason:'已存在相同链接的加热任务'});return null}
+    // A repost of a post that is already on /heat (e.g. another 加热 account's own post) adds nothing.
+    if(rt&&await activeTaskWithLink(normalizeTaskLink(postUrl(rt)),true)){await finish({status:'skipped',reason:'原帖已在加热列表'});return null}
     const name=post.user?.screen_name||HEAT_ACCOUNTS[uid].name;
     const title=heatTitle(name,heat.kind);
     const {data:task,error}=await db.from('tasks').insert({
       title,description:heat.description||null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往博文，按要求加热',
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
-      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:heat.repost,
+      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:heat.repost,heat_kind:heat.kind,
       show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:post.id,
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
