@@ -2,8 +2,9 @@
 import {useState} from 'react';
 import {AdminCard,AdminShell,StatusTag} from './AdminShell';
 
-// Team runbook for the Weibo watcher. It must never contain secret values (cookies, keys) or
-// the spare Weibo account's identity -- refreshing the login is done by the account's owner.
+// Team runbook for the Weibo watcher, complete enough for someone else to run the relay when the
+// owner is away (⑧). It must never contain secret values (cookies, keys) or the spare Weibo
+// account's identity -- only where to get them.
 
 function Sql({label,code}:{label:string;code:string}){
   const [copied,setCopied]=useState('');
@@ -27,7 +28,7 @@ export function AdminPlaybook(){
   return <AdminShell title="故障手册" subtitle="微博监控出现提醒或异常时，按本页从上往下排查">
     <AdminCard className="playbook-card">
       <nav className="playbook-toc" aria-label="目录">
-        {[['how','系统怎么运作'],['triage','快速判断'],['cookie','① 登录过期'],['ratelimit','② 微博限流 / 临时故障'],['stopped','③ 监控没有运行'],['wrong','④ 发布了错误任务'],['missing','⑤ 该发布却没发布'],['quota','⑥ 微信提醒额度用完'],['pause','⑦ 紧急暂停 / 重新开启'],['sql','常用 SQL'],['reference','关键信息']].map(([id,label])=><a key={id} href={`#${id}`}>{label}</a>)}
+        {[['how','系统怎么运作'],['triage','快速判断'],['cookie','① 登录过期'],['ratelimit','② 微博限流 / 临时故障'],['stopped','③ 监控没有运行'],['wrong','④ 发布了错误任务'],['missing','⑤ 该发布却没发布'],['quota','⑥ 微信提醒额度用完'],['pause','⑦ 紧急暂停 / 重新开启'],['relay','⑧ 自己运行读取程序'],['sql','常用 SQL'],['reference','关键信息']].map(([id,label])=><a key={id} href={`#${id}`}>{label}</a>)}
       </nav>
     </AdminCard>
 
@@ -74,12 +75,12 @@ export function AdminPlaybook(){
       <Facts rows={[['症状','提醒「微博监控失败：…微博登录已过期或被限制」或「微博返回异常数据」；卡片显示「扫描失败」。'],['原因','监控使用的备用微博账号登录失效，通常每几周到几个月一次；或该账号被微博要求验证。'],['影响','恢复前不会发布任何新任务。连续失败后监控会自动放慢重试（30 分钟、1 小时、2 小时，最长 4 小时一次），避免账号被进一步限制。恢复后会自动补发期间的新微博（每个账号最近约 10 条以内）。']]}/>
       <h3>处理步骤</h3>
       <Steps>
-        <li><b>联系负责人更新登录。</b>备用微博账号及其登录方法由负责人保管，其他人无需、也不应尝试登录该账号。</li>
+        <li><b>联系负责人更新登录。</b>负责人联系不上时，由团队指定的接手人按 <a href="#relay">⑧ 自己运行读取程序</a> 第 4–5 步重新登录备用账号、更新 <code>WEIBO_COOKIE</code>。其他人不要尝试登录该账号。</li>
         <li><b>等待期间：</b>如有紧急任务，在后台「发布任务」手动添加。之后自动补发时，若链接相同会自动跳过，不会重复。</li>
-        <li><b>立即重试：</b>负责人更新登录后，重启家用电脑上的 <code>weibo-relay</code>（关闭窗口后重新运行），会立即重新扫描。</li>
+        <li><b>立即重试：</b>更新登录后，重启运行读取程序的电脑上的 <code>weibo-relay</code>（关闭窗口后重新运行），会立即重新扫描。</li>
         <li><b>确认恢复：</b>约 2 分钟后，后台卡片应显示「运行中」，并收到「微博监控已恢复」提醒；也可以运行下方<a href="#sql">常用 SQL</a> 中的「最近扫描」，最新几行 <code>ok = true</code>。</li>
       </Steps>
-      <div className="playbook-note playbook-note-red"><b>安全提醒</b>任何人向你索要微博 Cookie、登录信息或 Supabase 密钥，都不要提供。本手册不包含、也不应添加任何密钥或账号信息。</div>
+      <div className="playbook-note playbook-note-red"><b>安全提醒</b>任何人向你索要微博 Cookie、登录信息或 Supabase 密钥，都不要提供。它们只填入运行读取程序那台电脑的 <code>.env.local</code>。本手册不包含、也不应添加任何密钥或账号信息（只说明去哪里取）。</div>
     </Mode>
 
     <Mode id="ratelimit" title="② 微博限流 / 临时故障" tag="通常会自行恢复" tone="gold">
@@ -98,7 +99,7 @@ export function AdminPlaybook(){
       <div className="playbook-note playbook-note-gold"><b>注意</b>「微博监控已停止」提醒由 Supabase 每分钟的检查发出。如果 Supabase 本身出问题（项目暂停、定时任务停用），<b>不会</b>有任何提醒——只能靠后台卡片或发现网站没更新来察觉。</div>
       <h3>检查步骤</h3>
       <Steps>
-        <li><b>家用电脑：</b>联系负责人确认电脑开机、联网、没有休眠，并且 <code>weibo-relay</code> 窗口在运行（没有就重新运行）。恢复后几分钟内会收到「微博监控已恢复」。</li>
+        <li><b>家用电脑：</b>联系负责人确认电脑开机、联网、没有休眠，并且 <code>weibo-relay</code> 窗口在运行（没有就重新运行）。负责人联系不上时，按 <a href="#relay">⑧</a> 在自己的电脑上运行。恢复后几分钟内会收到「微博监控已恢复」。</li>
         <li><b>项目是否被暂停：</b>打开 Supabase Dashboard。如果项目显示 <b>Paused</b>，点击 <b>Restore</b>，等待几分钟。（免费套餐长时间无访问可能被暂停；此时整个网站也无法访问。）</li>
         <li><b>定时任务是否启用：</b>运行下方第 1 段 SQL，确认 <code>active = true</code>；若为 false，运行第 2 段重新启用。</li>
         <li><b>定时任务调用结果：</b>运行第 3 段 SQL：<code>200</code> 正常；<code>403</code> 调用密钥不匹配，联系负责人；<code>500</code> 函数报错，把 <code>content</code> 列截图发给负责人；没有任何记录说明定时任务没有发出请求，检查第 2 步。</li>
@@ -159,6 +160,38 @@ export function AdminPlaybook(){
       <div className="playbook-note playbook-note-gold"><b>重新开启时会补发</b>暂停期间的新微博（每个账号最近约 10 条以内）会在开启后的第一次扫描中全部生成任务。<b>如果不希望补发</b>，在开启<b>之前</b>先运行下面的「重置起点」SQL：下一次扫描只记录当前位置，之后的新微博才会发布。</div>
       <Sql label="重置起点（不补发暂停期间的微博）" code="delete from public.weibo_watch_state;"/>
     </Mode>
+    <Mode id="relay" title="⑧ 自己运行读取程序（负责人不在时）" tag="接手 / 换电脑" tone="blue">
+      <Facts rows={[
+        ['用途','读取程序 weibo-relay 负责读取微博，只能在普通家庭宽带的电脑上运行（微博拒绝云服务器、公司网络和 VPN）。负责人的电脑不可用时，任何有后台和 Supabase 权限的人都可以按本节在自己的电脑上运行。'],
+        ['同一时间只运行一个','两台电脑同时运行，微博会看到同一账号从两个地方频繁读取，容易被限制。接手前先确认负责人电脑上的窗口已经关闭；负责人回来后，两人商量好只留一台。'],
+        ['需要准备','一台 Windows 或 Mac 电脑（家庭宽带，能长时间开机）；备用微博账号的登录方式（团队约定的保管处，建议提前向负责人要好）；Supabase Dashboard 权限；本网站代码（GitHub 仓库 menglu0706/ziyu-action-hub，需要仓库访问权限）。'],
+      ]}/>
+      <h3>第一次准备（约 15 分钟）</h3>
+      <Steps>
+        <li><b>安装 Node.js：</b>打开 <code>nodejs.org</code>，下载 LTS 版本并安装（一路「下一步」）。安装后打开 PowerShell（Mac 用「终端」）输入 <code>node -v</code>，显示 <code>v18</code> 或更高即可。</li>
+        <li><b>下载网站代码：</b>GitHub 仓库页面 → 绿色 <b>Code</b> 按钮 → <b>Download ZIP</b>，解压到例如「文档\action-hub」。读取程序只用 Node.js 自带功能，<b>不需要</b>运行 <code>npm install</code>。</li>
+        <li><b>取得 WATCHER_KEY：</b>在 Supabase SQL Editor 运行下方「读取程序密钥」SQL，复制结果（一长串字符）。</li>
+        <li><b>取得 WEIBO_COOKIE：</b>在这台电脑的 Chrome 里用备用微博账号登录 <code>m.weibo.cn</code> → 按 <b>F12</b> → 顶部 <b>Application</b>（应用）→ 左侧 <b>Cookies</b> → <code>https://m.weibo.cn</code> → 找到名称为 <b>SUB</b> 的一行，双击 Value 复制。之后<b>不要</b>在这个浏览器里点「退出登录」，否则 Cookie 立即失效。</li>
+        <li><b>写入 .env.local：</b>在代码文件夹最外层（和 <code>package.json</code> 同一层）新建文本文件，命名为 <code>.env.local</code>（注意没有 .txt 后缀），内容两行：<br/><code>{'WEIBO_COOKIE="SUB=刚才复制的值"'}</code><br/><code>WATCHER_KEY=刚才复制的密钥</code><br/>这个文件只留在这台电脑上，不要发给任何人，也不要上传。</li>
+        <li><b>检查关注：</b>备用微博账号必须关注下方<a href="#reference">关键信息</a>里的全部监控账号——读取程序读的是它的关注动态，没关注的账号读不到。</li>
+        <li><b>关闭自动睡眠：</b>Windows：设置 → 系统 → 电源 → 「插入电源时，设备进入睡眠状态」选「从不」。Mac：系统设置 → 电池 / 节能 → 防止自动进入睡眠。</li>
+      </Steps>
+      <h3>运行</h3>
+      <Steps>
+        <li>打开代码文件夹，在空白处按住 Shift 点右键 →「在此处打开 PowerShell 窗口 / 在终端中打开」（Mac：右键文件夹 → 服务 → 新建位于文件夹位置的终端窗口），输入 <code>node scripts/weibo-relay.mjs</code> 回车。</li>
+        <li>窗口会显示每次扫描的时间和结果。<b>保持窗口打开</b>（可以最小化）；关闭窗口或按 Ctrl+C 即停止。</li>
+        <li>北京时间 1:00–8:00 程序会自动暂停，8:00 后自动继续，不需要操作。</li>
+        <li><b>确认：</b>几分钟内，后台首页「微博监控」卡片显示「运行中」和最新扫描时间；之前有「已停止」提醒的话，会收到「微博监控已恢复」。</li>
+      </Steps>
+      <div className="playbook-note"><b>补发加热任务</b>某个账号第一次被读取时，只记录它最新一条微博作为起点，不会补发之前的微博。需要把最近的加热任务补上时，在同一个文件夹运行 <code>node scripts/heat-backfill.mjs</code>：它读取加热账号最近 10 小时的微博并逐条显示结果（已创建 / 跳过 / 忽略），已处理过的会自动跳过，可以放心重复运行。</div>
+      <h3>什么时候需要重启（关闭窗口后重新运行）</h3>
+      <Steps>
+        <li>更新了 <code>WEIBO_COOKIE</code>（重新登录）之后。</li>
+        <li>网站代码更新之后：重新下载 ZIP 覆盖旧文件，保留原来的 <code>.env.local</code>。</li>
+        <li>增加或删除监控账号之后（改动由负责人或开发者完成）：增加账号时先重启读取程序、再部署监控函数；删除账号时顺序相反。</li>
+      </Steps>
+      <Sql label="读取程序密钥（WATCHER_KEY，只填入 .env.local，勿外传）" code={`select decrypted_secret\nfrom vault.decrypted_secrets\nwhere name = 'weibo_watcher_key';`}/>
+    </Mode>
 
     <AdminCard className="playbook-card"><section id="sql">
       <h2>常用 SQL</h2>
@@ -173,12 +206,12 @@ export function AdminPlaybook(){
       <h2>关键信息</h2>
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>项目</th><th>值 / 位置</th></tr></thead><tbody>
         <tr><td>Supabase 项目</td><td>ziyu-action-hub（东京 ap-northeast-1）</td></tr>
-        <tr><td>读取程序</td><td>负责人家用电脑上的 <code>weibo-relay</code>（约每 3–4 分钟读取一次微博）</td></tr>
+        <tr><td>读取程序</td><td>负责人家用电脑上的 <code>weibo-relay</code>（约每 3–4 分钟读取一次微博；负责人不在时见 <a href="#relay">⑧</a>）</td></tr>
         <tr><td>监控函数</td><td>Edge Functions → <code>weibo-watcher</code>（处理读取结果；日志也在这里）</td></tr>
-        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）</td></tr>
+        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务，以及过了截止时间的加热任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）</td></tr>
         <tr><td>密钥</td><td>保存在 Supabase，由负责人管理，<b>请勿修改或外传</b></td></tr>
-        <tr><td>备用微博账号</td><td>由负责人保管</td></tr>
-        <tr><td>监控账号</td><td><a href="https://weibo.com/u/8019758392" target="_blank" rel="noreferrer">梓渝的小喇叭0706</a> · <a href="https://weibo.com/u/7352202247" target="_blank" rel="noreferrer">我是梓渝_</a> · <a href="https://weibo.com/u/8009243499" target="_blank" rel="noreferrer">梓渝ZIYU工作室</a></td></tr>
+        <tr><td>备用微博账号</td><td>由负责人保管；接手人提前向负责人要好登录方式，存放在团队约定的保管处</td></tr>
+        <tr><td>监控账号<br/>（备用账号必须全部关注）</td><td><b>紧急任务：</b><a href="https://weibo.com/u/8019758392" target="_blank" rel="noreferrer">梓渝的小喇叭0706</a> · <a href="https://weibo.com/u/7352202247" target="_blank" rel="noreferrer">我是梓渝_</a> · <a href="https://weibo.com/u/8009243499" target="_blank" rel="noreferrer">梓渝ZIYU工作室</a><br/><b>打榜更新 + 加热：</b><a href="https://weibo.com/u/6179787120" target="_blank" rel="noreferrer">月之必要</a><br/><b>加热：</b><a href="https://weibo.com/u/7487914503" target="_blank" rel="noreferrer">划破晨昏线</a> · <a href="https://weibo.com/u/7839981852" target="_blank" rel="noreferrer">是你的小汪0829</a> · <a href="https://weibo.com/u/7871898411" target="_blank" rel="noreferrer">梓木喃语</a> · <a href="https://weibo.com/u/7791016273" target="_blank" rel="noreferrer">先天性超雄圣体</a> · <a href="https://weibo.com/u/5665884286" target="_blank" rel="noreferrer">William瑾瑜</a> · <a href="https://weibo.com/u/9159145258" target="_blank" rel="noreferrer">梓渝_潮汐发电站重生版</a></td></tr>
       </tbody></table></div>
       <p className="muted">需要修改规则（标题、描述、处理哪些微博）、调整提醒额度或新增监控账号时，请联系负责人。</p>
     </section></AdminCard>
