@@ -51,8 +51,8 @@ export function goalsOnly(text:string){
 // Whether a 加热 account's post becomes a 加热 task, and which kind. Only a repost, or an original
 // post that links to other posts, can be one, and never a 星品 post. Then, in this order:
 //   空瓶 (a fight, 控评 / 空): its own text has one of KONG_MARKERS, or it links to comments;
-//   红膏 (broadcasting good news): it reposts or links a post by one of ziyuUids (梓渝's own accounts
-//     and brands), or its own text mentions POSITIVE_KEYWORDS together with one of HEAT_MARKERS (a
+//   红膏 (broadcasting good news): it reposts or links a post by one of ziyuUids (梓渝's own accounts;
+//     no brands, which change), or its own text mentions POSITIVE_KEYWORDS together with one of HEAT_MARKERS (a
 //     梓渝 mention alone, e.g. a 打榜 push, is not a 加热 call);
 //   空瓶: its own text has one of HEAT_MARKERS. A hashtag alone isn't an instruction, and the
 //     reposted post's text doesn't count.

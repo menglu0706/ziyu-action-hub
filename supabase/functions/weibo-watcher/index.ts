@@ -220,8 +220,8 @@ async function handleUpdate(uid:string,post:Post){
   }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
   return null; // task updates don't send WeChat alerts
 }
-// 梓渝's own accounts and brands: a 加热 post pointing at one of their posts is 红膏.
-const ZIYU_UIDS=new Set([...Object.keys(ACCOUNTS),...Object.keys(BRAND_NAMES)]);
+// 梓渝's own accounts (not brands, which change): a 加热 post pointing at one of their posts is 红膏.
+const ZIYU_UIDS=new Set(Object.keys(ACCOUNTS));
 // Whether another post's live 加热 task reposts the post sourceId (weibo_ingest keeps each 加热
 // repost's original as its source_post_id).
 async function liveHeatRepostOf(sourceId:string,exceptPostId:string){

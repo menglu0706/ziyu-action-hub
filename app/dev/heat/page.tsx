@@ -15,8 +15,8 @@ import samples from '@/lib/dev/heatSamples.json';
 import crawl from '@/lib/dev/heatCrawl.json';
 
 type Sample=HeatPost&{bid:string;id:string;created_at:string;user:{id:number;screen_name:string};retweeted_status?:{bid:string;user:{id:number}}};
-// Same as the watcher's ZIYU_UIDS: 梓渝's watched accounts plus brands.
-const ZIYU_UIDS=new Set(['8019758392','7352202247','8009243499','7552817501']);
+// Same as the watcher's ZIYU_UIDS: 梓渝's own watched accounts.
+const ZIYU_UIDS=new Set(['8019758392','7352202247','8009243499']);
 // The YUNI音乐日常任务 as 月之必要's 9.27 打榜 post would leave it, to preview formatted auto text.
 const MUSIC_SAMPLE:Task={id:'music-sample',title:'YUNI音乐日常任务',platform:'QQ音乐',category:'音乐',urgency:70,required:70,minutes:5,deadline:null,
   quick:'[音乐]9.27日重点打榜任务[音乐]\n1️⃣由你：都给《时间漫步》\n👉由你周年《贰拾肆》维持第一\n2️⃣JTMN：加入发电站👉 再完成任务给《贰拾肆》《不渝》',
