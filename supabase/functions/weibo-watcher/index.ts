@@ -12,6 +12,7 @@
 import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
 import {classifyHeat,heatTitle,heatTtl,pickHeat,plain} from '../_shared/heat.ts';
+import {DAILY_MUSIC_TASK_ID} from '../_shared/autoTasks.ts';
 
 type Post={
   id:string;bid?:string;created_at:string;text:string;source?:string;isLongText?:boolean;longText?:string;mblogtype?:number;pic_num?:number;
@@ -46,7 +47,7 @@ const ACCOUNTS:Record<string,Rule>={
 // creating tasks. Their other posts and reposts are ignored without a log entry. The relay
 // attaches the full text of long posts (longText) for these accounts.
 const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>={
-  '6179787120':{name:'月之必要',taskId:'f6eda702-5e58-4a4f-92e9-cbb372dd4f69',keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
+  '6179787120':{name:'月之必要',taskId:DAILY_MUSIC_TASK_ID,keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
 };
 // Accounts dedicated to 加热. Each of their posts or reposts that classifyHeat (_shared/heat.ts)
 // calls 红膏 or 空瓶 becomes a /heat task linking to that post itself, described by their text up
@@ -188,13 +189,13 @@ const isRedPacket=(post:Post)=>post.source==='粉丝红包'||post.page_info?.typ
 const isVoice=(post:Post)=>/\[语音\d+(?:&quot;|")\]/.test(post.text)||post.page_info?.type==='audio';
 const hasMedia=(post:Post)=>Boolean(post.pic_num)||post.page_info?.type==='video'||isVoice(post);
 
-// A post's whole text as one tidy line for 一句话最快做法: links, @mentions, repost chains and
-// trailing hashtag lists removed, inline hashtags kept as words, line breaks become spaces.
+// A post's whole text, tidied for 一句话最快做法: links, @mentions, repost chains and trailing
+// hashtag lists removed, inline hashtags kept as words, blank lines dropped (the site formats it).
 // With startAt, text before the first line matching it (e.g. a greeting) is dropped.
 const taskText=(html:string,startAt?:RegExp)=>{
   const lines=clean(plain(html)).split('\n').map(s=>s.trim()).filter(s=>meaningful(s));
   const first=startAt?Math.max(0,lines.findIndex(line=>startAt.test(line))):0;
-  return lines.slice(first).join(' ').replace(/\s+/g,' ').trim().slice(0,500);
+  return lines.slice(first).map(line=>line.replace(/\s+/g,' ')).join('\n').trim().slice(0,500);
 };
 
 async function handleUpdate(uid:string,post:Post){
