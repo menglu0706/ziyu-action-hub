@@ -39,10 +39,13 @@ export function heatText(html:string){
     const text=plain(line).replace(/https?:\/\/\S+/g,'').replace(/[ \t]+/g,' ').trim();
     if(text||lines.length)lines.push(text);
   }
-  const text=lines.join('\n').replace(/\n{3,}/g,'\n\n').trim();
-  // When the post states a goal, keep only the phrases that carry one: the rest is commentary.
+  return goalsOnly(lines.join('\n').replace(/\n{3,}/g,'\n\n').trim()).slice(0,300);
+}
+// When a text states a goal, only the phrases that carry one (the rest is commentary); otherwise
+// the text as is. Applying it twice changes nothing.
+export function goalsOnly(text:string){
   const goals=text.split(/\n|(?<=[，。！？!?；;])/).map(part=>part.trim().replace(/[，；;]$/,'')).filter(part=>HEAT_GOAL.test(part));
-  return (goals.length?goals.join('\n'):text).slice(0,300);
+  return goals.length?goals.join('\n'):text;
 }
 
 // Whether a 加热 account's post becomes a 加热 task, and which kind. Only a repost, or an original
@@ -69,6 +72,9 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
 // Every 加热 task's description opens with this line.
 export const HEAT_NOTICE='先转发扩散再加热！！！';
 export const withHeatNotice=(description:string)=>description.includes(HEAT_NOTICE)?description:[HEAT_NOTICE,description.trim()].filter(Boolean).join('\n');
+// A 加热 description as the site shows it: the notice, then goalsOnly of the rest. The site applies
+// it on display, so tasks saved before a rule change read the same as new ones.
+export const heatDisplayText=(description:string)=>withHeatNotice(goalsOnly(description.replace(HEAT_NOTICE,'').trim()));
 export const heatTitle=(name:string,kind:HeatKind)=>`${name} ${kind==='红膏'?'红膏加热':'速来空瓶'}`;
 
 // How long a 加热 task stays up: 红膏 10 hours, 空瓶 6 (and tasks made in admin, which have no kind).
