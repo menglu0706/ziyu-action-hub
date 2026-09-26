@@ -11,6 +11,7 @@
 //   npx supabase functions deploy weibo-watcher --project-ref <ref> --no-verify-jwt --use-api
 import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
+import {classifyHeat,heatTitle,plain} from '../_shared/heat.ts';
 
 type Post={
   id:string;bid?:string;created_at:string;text:string;source?:string;isLongText?:boolean;longText?:string;mblogtype?:number;pic_num?:number;
@@ -49,17 +50,12 @@ const ACCOUNTS:Record<string,Rule>={
 const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>={
   '6179787120':{name:'月之必要',taskId:'f6eda702-5e58-4a4f-92e9-cbb372dd4f69',keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
 };
-// Accounts dedicated to 加热. Each of their posts or reposts (not a repost of a repost) becomes a
-// /heat task linking to that post itself, when it is either
-//   红膏 (broadcasting good news): their own text mentions POSITIVE_KEYWORDS, or it reposts or links
-//     a post by 梓渝's own accounts or brands; this wins over the next one, or
-//   空瓶 (a fight): it carries a hashtag (in their text or the reposted post) and isn't 红膏.
-// Other posts are ignored without a log entry. The description is their text up to the first
-// link line. Tasks are never pinned, not on /urgent, with a deadline HEAT_TTL_MS away (admins can
+// Accounts dedicated to 加热. Each of their posts or reposts that classifyHeat (_shared/heat.ts)
+// calls 红膏 or 空瓶 becomes a /heat task linking to that post itself, described by their text up
+// to its first link line; other posts are ignored without a log entry. Tasks are never pinned, not on /urgent, with a deadline HEAT_TTL_MS away (admins can
 // change it); /heat lists original posts before reposts. An account can also be in UPDATE_ACCOUNTS;
 // a post matching its update keywords is handled as an update instead.
 // Each account must also be in the relay's ACCOUNTS (and followed by the spare account).
-const POSITIVE_KEYWORDS=/梓渝|yuni|芋泥/i;
 const HEAT_ACCOUNTS:Record<string,{name:string}>={
   '7487914503':{name:'划破晨昏线'},
   '7839981852':{name:'是你的小汪0829'},
@@ -92,9 +88,7 @@ function quietWindow(now=Date.now()){
 }
 const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
 // --- Text rules ---------------------------------------------------------------------------
-// Web-link cards (shown as 网页链接) and 超话 tag cards are dropped: neither reads as text.
-const plain=(html:string)=>html.replace(/<a [^>]*href="[^"]*(?:sinaurl|\/p\/index|\/p\/100808)[^"]*"[^>]*>[\s\S]*?<\/a>/g,'').replace(/<br\s*\/?>/g,'\n').replace(/<a [^>]*>全文<\/a>/g,'').replace(/<[^>]+>/g,'')
-  .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'");
+// plain() (in _shared/heat.ts) turns post HTML into text.
 // Trailing hashtag lists are dropped; inline hashtags keep their words; @mentions, links,
 // video/live labels, leading 📣 and "通知：" labels are removed, as is a repost's "//@name:" chain.
 const clean=(text:string)=>text.replace(/\[语音(\d+)"\]\s*请用最新版手机微博app收听原声\s*(?:分享语音)?/g,'发了一条 $1 秒的语音。').replace(/\/\/\s*@[\s\S]*$/,'').replace(/(\s*#[^#\n]+#)+\s*$/gm,'').replace(/#([^#\n]+)#/g,'$1').replace(/@[\w一-龥-]+/g,'')
@@ -228,27 +222,9 @@ async function handleUpdate(uid:string,post:Post){
 }
 // 梓渝's own accounts and brands: a 加热 post pointing at one of their posts is 红膏.
 const ZIYU_UIDS=new Set([...Object.keys(ACCOUNTS),...Object.keys(BRAND_NAMES)]);
-// Links in a post's HTML to other Weibo posts, as the uids of their authors.
-const linkedAuthors=(html:string)=>[...html.matchAll(/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(\d+)\/\w+/g)].map(m=>m[1]);
-// A post's own text up to its first line with a link (to a post, comment or web page); hashtags
-// and @mentions are kept, as that is how 加热 accounts write their instructions.
-function heatText(html:string){
-  const lines=[];
-  for(const line of html.split(/<br\s*\/?>/)){
-    if(/<a [^>]*href="(?![^"]*containerid=231522)(?!\/n\/)[^"]*"/.test(line))break;
-    const text=plain(line).replace(/https?:\/\/\S+/g,'').replace(/[ \t]+/g,' ').trim();
-    if(text||lines.length)lines.push(text);
-  }
-  return lines.join('\n').replace(/\n{3,}/g,'\n\n').trim().slice(0,300);
-}
 async function handleHeat(uid:string,post:Post){
-  const html=post.longText??post.text,rt=post.retweeted_status;
-  // A repost of a repost carries the "//@name:" chain; only first-hand posts count.
-  if(rt&&/\/\/\s*<a [^>]*>@|\/\/\s*@/.test(html))return null;
-  const own=plain(html);
-  const positive=POSITIVE_KEYWORDS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ZIYU_UIDS.has(id));
-  const fight=!positive&&/#[^#\n]+#/.test(own+(rt?plain(rt.text):''));
-  if(!positive&&!fight)return null;
+  const heat=classifyHeat(post,ZIYU_UIDS);
+  if('skip' in heat)return null;
   const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
   const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
   if(!claimed?.length)return null;
@@ -256,11 +232,11 @@ async function handleHeat(uid:string,post:Post){
     const link=postUrl(post);
     if(await activeTaskWithLink(normalizeTaskLink(link),true)){await finish({status:'skipped',reason:'已存在相同链接的加热任务'});return null}
     const name=post.user?.screen_name||HEAT_ACCOUNTS[uid].name;
-    const title=`${name} ${positive?'红膏加热':'速来空瓶'}`;
+    const title=heatTitle(name,heat.kind);
     const {data:task,error}=await db.from('tasks').insert({
-      title,description:heatText(html)||null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往博文，按要求加热',
+      title,description:heat.description||null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往博文，按要求加热',
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
-      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:Boolean(rt),
+      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:heat.repost,
       show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:post.id,
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
