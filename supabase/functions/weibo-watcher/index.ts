@@ -11,7 +11,7 @@
 //   npx supabase functions deploy weibo-watcher --project-ref <ref> --no-verify-jwt --use-api
 import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
-import {classifyHeat,heatTitle,plain} from '../_shared/heat.ts';
+import {classifyHeat,heatTitle,heatTtl,pickHeat,plain} from '../_shared/heat.ts';
 
 type Post={
   id:string;bid?:string;created_at:string;text:string;source?:string;isLongText?:boolean;longText?:string;mblogtype?:number;pic_num?:number;
@@ -31,8 +31,6 @@ const TOPIC_KEY='topic:梓渝超话',TOPIC_TITLE='宝梓超话营业啦，快来
 const PRIORITY_UID='7352202247',PRIORITY_PIN_MS=6*3600e3;
 // Auto tasks go offline this long after creation (migration 019's job does the switch).
 const TASK_TTL_MS=24*3600e3;
-// 加热 tasks' deadline, the same default the admin form uses.
-const HEAT_TTL_MS=6*3600e3;
 // Short brand names for 共创 co-creators, when cleaning the Weibo screen name isn't enough.
 const BRAND_NAMES:Record<string,string>={'7552817501':'有棵树'};
 const ACCOUNTS:Record<string,Rule>={
@@ -52,8 +50,9 @@ const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>
 };
 // Accounts dedicated to 加热. Each of their posts or reposts that classifyHeat (_shared/heat.ts)
 // calls 红膏 or 空瓶 becomes a /heat task linking to that post itself, described by their text up
-// to its first link line; other posts are ignored without a log entry. Tasks are never pinned, not on /urgent, with a deadline HEAT_TTL_MS away (admins can
-// change it); /heat lists original posts before reposts. An account can also be in UPDATE_ACCOUNTS;
+// to its first link line; other posts are ignored without a log entry. Tasks are never pinned, not on /urgent, and stay up
+// heatTtl(kind) from their post's time (红膏 10 h, 空瓶 6 h; admins can change it); each new one
+// rotates out the watcher-made 加热 tasks /heat no longer has room for (rotateHeat). An account can also be in UPDATE_ACCOUNTS;
 // a post matching its update keywords is handled as an update instead.
 // Each account must also be in the relay's ACCOUNTS (and followed by the spare account).
 const HEAT_ACCOUNTS:Record<string,{name:string}>={
@@ -222,11 +221,25 @@ async function handleUpdate(uid:string,post:Post){
 }
 // 梓渝's own accounts and brands: a 加热 post pointing at one of their posts is 红膏.
 const ZIYU_UIDS=new Set([...Object.keys(ACCOUNTS),...Object.keys(BRAND_NAMES)]);
+// Takes offline the watcher-made 加热 tasks that /heat no longer shows (pickHeat: originals first,
+// newest first, at least 2 of each kind). Tasks made in admin are never rotated out.
+async function rotateHeat(){
+  const {data,error}=await db.from('tasks').select('id,source,heat_kind,heat_repost,created_at').eq('status','published').eq('show_in_heat',true).or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`);
+  if(error||!data)return 0;
+  const live=data.map(t=>({id:t.id as string,source:t.source as string,heatKind:t.heat_kind,heatRepost:t.heat_repost,createdAt:t.created_at as string}));
+  const kept=new Set(pickHeat(live).map(t=>t.id));
+  const out=live.filter(t=>!kept.has(t.id)&&t.source!=='manual').map(t=>t.id);
+  if(out.length)await db.from('tasks').update({status:'offline',is_pinned:false,updated_at:new Date().toISOString()}).in('id',out);
+  return out.length;
+}
+
 // Returns what happened to the post, for backfill reports; scans ignore it (加热 tasks send no
-// WeChat alerts). deadline defaults to HEAT_TTL_MS from now; a backfill passes the post's own.
-async function handleHeat(uid:string,post:Post,deadline=new Date(Date.now()+HEAT_TTL_MS)):Promise<string>{
+// WeChat alerts). The task stays up heatTtl(kind) from its post's time.
+async function handleHeat(uid:string,post:Post):Promise<string>{
   const heat=classifyHeat(post,ZIYU_UIDS);
   if('skip' in heat)return `忽略：${heat.skip}`;
+  const deadline=new Date(new Date(post.created_at).getTime()+heatTtl(heat.kind));
+  if(deadline.getTime()<=Date.now())return `忽略：${heat.kind}已超过 ${heatTtl(heat.kind)/3600e3} 小时`;
   const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
   const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
   if(!claimed?.length)return '已处理过';
@@ -246,7 +259,8 @@ async function handleHeat(uid:string,post:Post,deadline=new Date(Date.now()+HEAT
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
     await finish({status:'published',title,task_id:task.id});
-    return `已创建：${title}`;
+    const rotated=await rotateHeat();
+    return `已创建：${title}${rotated?`（轮换下线 ${rotated} 条）`:''}`;
   }catch(error){
     const reason=error instanceof Error?error.message:String(error);
     await finish({status:'failed',reason});
@@ -375,18 +389,16 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
 // Adds /media items (no tasks, no pins) for specific posts the watcher missed, e.g. ones from before
 // a feed was first watched. Same media rules and duplicate check as a normal scan.
 // Adds 加热 tasks for 加热 accounts' posts the watcher never saw (e.g. from before a feed's first
-// scan), with the same rules and duplicate checks as a scan. Each task's 6 hours count from its
-// post, so posts already older than that are skipped; 打榜 update posts are left alone.
+// scan), with the same rules, duplicate checks and rotation as a scan. Each task's time counts from
+// its post, so posts already past it are skipped; 打榜 update posts are left alone.
 async function backfillHeat(posts:Post[]){
   const results:{post:string;account:string;outcome:string}[]=[];
   for(const post of posts){
     const uid=String(post.user?.id),update=UPDATE_ACCOUNTS[uid];
     const report=(outcome:string)=>results.push({post:post.bid??post.id,account:accountName(uid),outcome});
-    const ends=new Date(post.created_at).getTime()+HEAT_TTL_MS;
     if(!HEAT_ACCOUNTS[uid])report('忽略：不是加热账号');
-    else if(ends<=Date.now())report('忽略：发布已超过 6 小时');
     else if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))report('忽略：打榜任务更新（不补）');
-    else report(await handleHeat(uid,post,new Date(ends)));
+    else report(await handleHeat(uid,post));
   }
   return Response.json({results});
 }

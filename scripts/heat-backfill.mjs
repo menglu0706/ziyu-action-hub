@@ -1,6 +1,7 @@
-// One-off 加热 backfill for a home PC: reads the 加热 accounts' posts from the last 6 hours with the
+// One-off 加热 backfill for a home PC: reads the 加热 accounts' posts from the last 10 hours with the
 // spare account's login and hands them to the weibo-watcher Edge Function (mode 'backfill-heat'),
-// which runs the normal 加热 rules and duplicate checks. Each task's 6 hours count from its post.
+// which runs the normal 加热 rules, duplicate checks and rotation. Each task's time (红膏 10 h,
+// 空瓶 6 h) counts from its post, so the watcher skips 空瓶 posts older than 6 hours.
 // Safe to run more than once: posts the watcher has already handled are reported and left alone.
 //
 // Needs in .env.local (project root): WEIBO_COOKIE="SUB=..." and WATCHER_KEY=... (same as the relay)
@@ -12,7 +13,8 @@ import {fileURLToPath} from 'node:url';
 const WATCHER_URL='https://enwmacfmwqaqghyiqskj.supabase.co/functions/v1/weibo-watcher';
 // The watcher's HEAT_ACCOUNTS -- keep in sync with supabase/functions/weibo-watcher/index.ts.
 const HEAT_ACCOUNTS={'7487914503':'划破晨昏线','7839981852':'是你的小汪0829','7871898411':'梓木喃语','7791016273':'先天性超雄圣体','5665884286':'William瑾瑜','9159145258':'梓渝_潮汐发电站重生版','6179787120':'月之必要'};
-const WINDOW_MS=6*3600e3;
+// The longest 加热 lifetime (红膏).
+const WINDOW_MS=10*3600e3;
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
 function readEnv(){
@@ -38,7 +40,7 @@ async function getJson(url){
   return json;
 }
 
-// One account's posts from the last 6 hours (its profile-pinned post dropped), long posts in full.
+// One account's posts from the last 10 hours (its profile-pinned post dropped), long posts in full.
 async function recentPosts(uid){
   const json=await getJson(`https://m.weibo.cn/api/container/getIndex?type=uid&value=${uid}&containerid=107603${uid}`);
   const since=Date.now()-WINDOW_MS;
@@ -54,7 +56,7 @@ async function recentPosts(uid){
 
 const posts=[];
 for(const [uid,name] of Object.entries(HEAT_ACCOUNTS)){
-  try{const found=await recentPosts(uid);console.log(`${name}：最近 6 小时 ${found.length} 条`);posts.push(...found)}
+  try{const found=await recentPosts(uid);console.log(`${name}：最近 10 小时 ${found.length} 条`);posts.push(...found)}
   catch(error){console.error(`${name}：读取失败，${error.message}`)}
   await sleep(1500+Math.random()*1500);
 }

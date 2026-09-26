@@ -3,11 +3,11 @@
 // table of how every post was handled. Not served in production builds.
 //   /dev/heat              curated samples (lib/dev/heatSamples.json); every task counts as live.
 //   /dev/heat?source=crawl the 加热 accounts' latest posts as crawled (lib/dev/heatCrawl.json); tasks
-//                          get their real 6-hour window, as if /heat were opened at crawl time.
+//                          get their real lifetime (红膏 10 h, 空瓶 6 h), as if /heat were opened at crawl time.
 import {notFound} from 'next/navigation';
 import {MobileHeader} from '@/components/MobileHeader';
 import {HeatList} from '@/components/HeatList';
-import {classifyHeat,heatTitle,type HeatPost} from '@/lib/heat';
+import {classifyHeat,heatTitle,heatTtl,type HeatPost} from '@/lib/heat';
 import {HEAT_TAB_LIMIT,pickHeatTasks} from '@/lib/heatList';
 import type {Task} from '@/lib/types';
 import samples from '@/lib/dev/heatSamples.json';
@@ -17,7 +17,6 @@ type Sample=HeatPost&{bid:string;id:string;created_at:string;user:{id:number;scr
 // Same as the watcher's ZIYU_UIDS: 梓渝's watched accounts plus brands.
 const ZIYU_UIDS=new Set(['8019758392','7352202247','8009243499','7552817501']);
 const postUrl=(uid:number,bid:string)=>`https://weibo.com/${uid}/${bid}`;
-const HEAT_TTL_MS=6*3600e3;
 // The crawl's compact rows: bid, Beijing time (e.g. 'Sep 27 01:47:13', 2026), uid, name, HTML, repost.
 type CrawlRow={b:string;t:string;u:number;n:string;h:string;r?:{b:string;u:number;n:string;h:string}};
 const crawlTime=(t:string)=>new Date(`${t.slice(0,6)} 2026 ${t.slice(7)} GMT+0800`).toString();
@@ -29,14 +28,14 @@ export default async function HeatPreview({searchParams}:{searchParams:Promise<{
   const fromCrawlSource=(await searchParams).source==='crawl';
   const posts=fromCrawlSource?(crawl as CrawlRow[]).map(fromCrawl):samples as Sample[];
   const time=(post:Sample)=>new Date(post.created_at).getTime();
-  // "Now" for the 6-hour window: the newest crawled post, or the real now for samples (all live).
+  // "Now" for the lifetimes: the newest crawled post, or the real now for samples (all live).
   const asOf=fromCrawlSource?Math.max(...posts.map(time)):Date.now(),listedUrls=new Set<string>();
   const rows=[...posts].sort((a,b)=>time(a)-time(b)).map(post=>{
     const url=postUrl(post.user.id,post.bid),rt=post.retweeted_status;
     const result=classifyHeat(post,ZIYU_UIDS);
     if('skip' in result)return {post,url,outcome:`忽略：${result.skip}`,task:null};
-    const ends=fromCrawlSource?time(post)+HEAT_TTL_MS:asOf+HEAT_TTL_MS;
-    if(ends<=asOf)return {post,url,outcome:`${result.kind}，但已过 6 小时（已下线）`,task:null};
+    const ends=(fromCrawlSource?time(post):asOf)+heatTtl(result.kind);
+    if(ends<=asOf)return {post,url,outcome:`${result.kind}，但已过 ${heatTtl(result.kind)/3600e3} 小时（已下线）`,task:null};
     if(rt&&listedUrls.has(postUrl(rt.user.id,rt.bid)))return {post,url,outcome:'忽略：原帖已在加热列表',task:null};
     listedUrls.add(url);
     // Shift the window onto the real clock so the cards' countdowns read as they would have at asOf.

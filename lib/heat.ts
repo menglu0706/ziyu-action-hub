@@ -63,3 +63,32 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
 export const HEAT_NOTICE='先转发扩散再加热！！！';
 export const withHeatNotice=(description:string)=>description.includes(HEAT_NOTICE)?description:[HEAT_NOTICE,description.trim()].filter(Boolean).join('\n');
 export const heatTitle=(name:string,kind:HeatKind)=>`${name} ${kind==='红膏'?'红膏加热':'速来空瓶'}`;
+
+// How long a 加热 task stays up: 红膏 10 hours, 空瓶 6 (and tasks made in admin, which have no kind).
+export const HEAT_TTL_MS={红膏:10*3600e3,空瓶:6*3600e3,default:6*3600e3} as const;
+export const heatTtl=(kind?:HeatKind|null)=>kind?HEAT_TTL_MS[kind]:HEAT_TTL_MS.default;
+
+// /heat shows at most HEAT_TAB_LIMIT cards; when both kinds are live, each keeps at least HEAT_KIND_MIN.
+export const HEAT_TAB_LIMIT=15;
+const HEAT_KIND_MIN=2;
+export type HeatRankItem={heatKind?:HeatKind|null;heatRepost?:boolean;createdAt?:string};
+// Original posts before reposts, newest first within each.
+const byRank=(a:HeatRankItem,b:HeatRankItem)=>Number(Boolean(a.heatRepost))-Number(Boolean(b.heatRepost))||(b.createdAt??'').localeCompare(a.createdAt??'');
+// The cards /heat shows, in order: the best-ranked HEAT_TAB_LIMIT, except that a kind with fewer than
+// HEAT_KIND_MIN of them takes the places of the lowest-ranked cards of the other kind. The watcher
+// takes offline the watcher-made tasks this leaves out (the rotation).
+export function pickHeat<T extends HeatRankItem>(tasks:T[],limit=HEAT_TAB_LIMIT):T[]{
+  const ranked=[...tasks].sort(byRank),chosen=ranked.slice(0,limit),rest=ranked.slice(limit);
+  const count=(kind:HeatKind)=>chosen.filter(task=>task.heatKind===kind).length;
+  for(const kind of ['红膏','空瓶'] as const){
+    const extras=rest.filter(task=>task.heatKind===kind);
+    while(count(kind)<HEAT_KIND_MIN&&extras.length){
+      // The lowest-ranked card that can give up its place: not this kind, and not taking the other kind below its minimum.
+      const index=chosen.findLastIndex(task=>task.heatKind!==kind&&(!task.heatKind||count(task.heatKind)>HEAT_KIND_MIN));
+      if(index<0)break;
+      chosen.splice(index,1);
+      chosen.push(extras.shift()!);
+    }
+  }
+  return chosen.sort(byRank);
+}
