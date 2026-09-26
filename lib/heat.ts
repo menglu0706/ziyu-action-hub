@@ -11,6 +11,8 @@ export type HeatKind='红膏'|'空瓶';
 export type HeatResult={kind:HeatKind;repost:boolean;description:string}|{skip:string};
 
 const POSITIVE_KEYWORDS=/梓渝|yuni|芋泥/i;
+// Instructions that make a post a 加热 call on their own: 🈳 (控评 / 空), 控评, 加热, 加🔥 / ➕🔥.
+const HEAT_MARKERS=/🈳|控评|加热|[加➕]🔥/u;
 // Links in a post's HTML to other Weibo posts, as the uids of their authors.
 const linkedAuthors=(html:string)=>[...html.matchAll(/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(\d+)\/\w+/g)].map(m=>m[1]);
 
@@ -29,15 +31,16 @@ export function heatText(html:string){
 // Whether a 加热 account's post becomes a 加热 task, and which kind:
 //   红膏 (broadcasting good news): its own text mentions POSITIVE_KEYWORDS, or it reposts or links a
 //     post by one of ziyuUids (梓渝's own accounts and brands); this wins over the next one, or
-//   空瓶 (a fight): it carries a hashtag (in its text or the reposted post) and isn't 红膏.
+//   空瓶 (a fight): it isn't 红膏, and its own text has one of HEAT_MARKERS or it carries a hashtag
+//     (in its text or the reposted post).
 // A repost of a repost (its text carries the "//@name:" chain) is ignored, as is anything else.
 export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
   const html=post.longText??post.text,rt=post.retweeted_status;
   if(rt&&/\/\/\s*<a [^>]*>@|\/\/\s*@/.test(html))return {skip:'转发的转发'};
   const own=plain(html);
   const positive=POSITIVE_KEYWORDS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id));
-  const fight=!positive&&/#[^#\n]+#/.test(own+(rt?plain(rt.text):''));
-  if(!positive&&!fight)return {skip:'没有梓渝关键词，也没有话题'};
+  const fight=!positive&&(HEAT_MARKERS.test(own)||/#[^#\n]+#/.test(own+(rt?plain(rt.text):'')));
+  if(!positive&&!fight)return {skip:'没有梓渝关键词、加热指令或话题'};
   return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:heatText(html)};
 }
 export const heatTitle=(name:string,kind:HeatKind)=>`${name} ${kind==='红膏'?'红膏加热':'速来空瓶'}`;
