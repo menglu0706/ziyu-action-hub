@@ -11,7 +11,7 @@ import {fileURLToPath} from 'node:url';
 
 const WATCHER_URL='https://enwmacfmwqaqghyiqskj.supabase.co/functions/v1/weibo-watcher';
 // 加热 accounts: their posts mentioning 加热 become /heat tasks (月之必要 is one too).
-const HEAT_ACCOUNTS={'7487914503':'加热号 7487914503','7839981852':'加热号 7839981852','7871898411':'加热号 7871898411','7791016273':'加热号 7791016273','5665884286':'加热号 5665884286'};
+const HEAT_ACCOUNTS={'7487914503':'划破晨昏线','7839981852':'是你的小汪0829','7871898411':'梓木喃语','7791016273':'先天性超雄圣体','5665884286':'William瑾瑜','9159145258':'梓渝_潮汐发电站重生版'};
 const ACCOUNTS={'8019758392':'梓渝的小喇叭0706','7352202247':'我是梓渝_','8009243499':'梓渝ZIYU工作室','6179787120':'月之必要',...HEAT_ACCOUNTS};
 // Accounts whose long posts need their full text (月之必要's 打榜任务 lists replace a task's text;
 // the 加热 accounts' keyword can sit past the cut-off).

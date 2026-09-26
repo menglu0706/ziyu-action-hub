@@ -56,11 +56,12 @@ const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>
 // Each account must also be in the relay's ACCOUNTS (and followed by the spare account).
 const HEAT_KEYWORDS=/加热/;
 const HEAT_ACCOUNTS:Record<string,{name:string}>={
-  '7487914503':{name:'加热号 7487914503'},
-  '7839981852':{name:'加热号 7839981852'},
-  '7871898411':{name:'加热号 7871898411'},
-  '7791016273':{name:'加热号 7791016273'},
-  '5665884286':{name:'加热号 5665884286'},
+  '7487914503':{name:'划破晨昏线'},
+  '7839981852':{name:'是你的小汪0829'},
+  '7871898411':{name:'梓木喃语'},
+  '7791016273':{name:'先天性超雄圣体'},
+  '5665884286':{name:'William瑾瑜'},
+  '9159145258':{name:'梓渝_潮汐发电站重生版'},
   '6179787120':{name:'月之必要'},
 };
 const accountName=(uid:string)=>ACCOUNTS[uid]?.name??UPDATE_ACCOUNTS[uid]?.name??HEAT_ACCOUNTS[uid]?.name??uid;
