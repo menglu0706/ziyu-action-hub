@@ -17,8 +17,9 @@ const KONG_MARKERS=/🈳|空|控|前排/u;
 const linksComments=(html:string)=>/href="[^"]*(?:detailbulletincomment|comment_id)/.test(html);
 // 星品 / 新宣 progress posts are a different kind of task, not 加热.
 const STAR_PRODUCT=/星品|新宣/u;
-// Other instructions that make a post a 加热 call on their own.
-const HEAT_MARKERS=/加热|[加➕]🔥/u;
+// Other instructions that make a post a 加热 call on their own: 加热 / 加🔥, a goal (3k👍, 万赞, 千转,
+// 1k🧱) or a call to push (速来, 点…热门, 外显, 艾特智搜).
+const HEAT_MARKERS=/加热|[加➕]🔥|\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:👍|赞|转|评|🧱|🍎)|[万千]\s*(?:👍|赞|转|评)|速来|稳热门|点.{0,4}热门|外显|艾特智搜/u;
 // Links in a post's HTML to other Weibo posts, as the uids of their authors.
 const linkedAuthors=(html:string)=>[...html.matchAll(/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(\d+)\/\w+/g)].map(m=>m[1]);
 // Whether a post's HTML links to at least one other Weibo post.
@@ -41,7 +42,8 @@ export function heatText(html:string){
 //   空瓶 (a fight, 控评 / 空): its own text has one of KONG_MARKERS, or it links to comments;
 //   红膏 (broadcasting good news): its own text mentions POSITIVE_KEYWORDS, or it reposts or links a
 //     post by one of ziyuUids (梓渝's own accounts and brands);
-//   空瓶: its own text has one of HEAT_MARKERS, or it carries a hashtag (in its text or the reposted post).
+//   空瓶: its own text has one of HEAT_MARKERS or a hashtag. The reposted post's text doesn't count:
+//     a repost of a hashtagged post with only commentary of their own is not a 加热 call.
 // A repost of a repost (its text carries the "//@name:" chain) is ignored, as is anything else.
 export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
   const html=post.longText??post.text,rt=post.retweeted_status;
@@ -51,7 +53,7 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
   if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
   const kong=KONG_MARKERS.test(own)||linksComments(html);
   const positive=!kong&&(POSITIVE_KEYWORDS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
-  const fight=kong||!positive&&(HEAT_MARKERS.test(own)||/#[^#\n]+#/.test(own+(rt?plain(rt.text):'')));
+  const fight=kong||!positive&&(HEAT_MARKERS.test(own)||/#[^#\n]+#/.test(own));
   if(!positive&&!fight)return {skip:'没有梓渝关键词、加热指令或话题'};
   return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:heatText(html)};
 }
