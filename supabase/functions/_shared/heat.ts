@@ -56,6 +56,9 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
   const positive=!kong&&(POSITIVE_KEYWORDS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
   if(!positive&&!fight)return {skip:'没有梓渝关键词或加热指令'};
-  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:heatText(html)};
+  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:withHeatNotice(heatText(html))};
 }
+// Every 加热 task's description opens with this line.
+export const HEAT_NOTICE='先转发扩散再加热！！！';
+export const withHeatNotice=(description:string)=>description.includes(HEAT_NOTICE)?description:[HEAT_NOTICE,description.trim()].filter(Boolean).join('\n');
 export const heatTitle=(name:string,kind:HeatKind)=>`${name} ${kind==='红膏'?'红膏加热':'速来空瓶'}`;
