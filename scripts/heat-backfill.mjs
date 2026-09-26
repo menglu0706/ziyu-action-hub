@@ -11,8 +11,9 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const WATCHER_URL='https://enwmacfmwqaqghyiqskj.supabase.co/functions/v1/weibo-watcher';
-// The watcher's HEAT_ACCOUNTS -- keep in sync with supabase/functions/weibo-watcher/index.ts.
-const HEAT_ACCOUNTS={'7487914503':'划破晨昏线','7839981852':'是你的小汪0829','7871898411':'梓木喃语','7791016273':'先天性超雄圣体','5665884286':'William瑾瑜','9159145258':'梓渝_潮汐发电站重生版','6179787120':'月之必要'};
+// The watched accounts, shared with the watcher: supabase/functions/_shared/accounts.json.
+const WATCHED=JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)),'..','supabase','functions','_shared','accounts.json'),'utf8'));
+const HEAT_ACCOUNTS=WATCHED.heat;
 // The longest 加热 lifetime (红膏).
 const WINDOW_MS=10*3600e3;
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';

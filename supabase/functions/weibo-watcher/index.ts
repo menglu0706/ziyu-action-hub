@@ -13,6 +13,8 @@ import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
 import {classifyHeat,heatTitle,heatTtl,pickHeat,plain} from '../_shared/heat.ts';
 import {DAILY_MUSIC_TASK_ID} from '../_shared/autoTasks.ts';
+// Which accounts are watched, and their names: one list for the watcher, relay, backfill and site.
+import WATCHED from '../_shared/accounts.json' with {type:'json'};
 
 type Post={
   id:string;bid?:string;created_at:string;text:string;source?:string;isLongText?:boolean;longText?:string;mblogtype?:number;pic_num?:number;
@@ -35,19 +37,19 @@ const TASK_TTL_MS=24*3600e3;
 // Short brand names for 共创 co-creators, when cleaning the Weibo screen name isn't enough.
 const BRAND_NAMES:Record<string,string>={'7552817501':'有棵树'};
 const ACCOUNTS:Record<string,Rule>={
-  '8019758392':{name:'梓渝的小喇叭0706',reposts:true,media:false,
+  '8019758392':{name:WATCHED.urgent['8019758392'],reposts:true,media:false,
     title:p=>`重要通知：${p.sentence||'梓渝的小喇叭0706 发布了新微博'}`,description:()=>null},
-  '7352202247':{name:'我是梓渝_',reposts:true,media:true,
+  '7352202247':{name:WATCHED.urgent['7352202247'],reposts:true,media:true,
     title:p=>p.repost?'任务博来啦，快来zzp!':p.live?'宝梓直播啦快来！！！！':'宝梓营业啦，快快来！！百万转，百万评！',
     description:p=>p.sentence||null},
-  '8009243499':{name:'梓渝ZIYU工作室',reposts:false,media:true,
+  '8009243499':{name:WATCHED.urgent['8009243499'],reposts:false,media:true,
     title:p=>p.sentence||'梓渝ZIYU工作室 发布了新微博',description:()=>null},
 };
 // Accounts whose matching original posts rewrite an existing task's 一句话最快做法 instead of
 // creating tasks. Their other posts and reposts are ignored without a log entry. The relay
 // attaches the full text of long posts (longText) for these accounts.
 const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>={
-  '6179787120':{name:'月之必要',taskId:DAILY_MUSIC_TASK_ID,keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
+  '6179787120':{name:WATCHED.update['6179787120'],taskId:DAILY_MUSIC_TASK_ID,keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
 };
 // Accounts dedicated to 加热. Each of their posts or reposts that classifyHeat (_shared/heat.ts)
 // calls 红膏 or 空瓶 becomes a /heat task linking to that post itself, described by their text up
@@ -55,16 +57,8 @@ const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>
 // heatTtl(kind) from their post's time (红膏 10 h, 空瓶 6 h; admins can change it); each new one
 // rotates out the watcher-made 加热 tasks /heat no longer has room for (rotateHeat). An account can also be in UPDATE_ACCOUNTS;
 // a post matching its update keywords is handled as an update instead.
-// Each account must also be in the relay's ACCOUNTS (and followed by the spare account).
-const HEAT_ACCOUNTS:Record<string,{name:string}>={
-  '7487914503':{name:'划破晨昏线'},
-  '7839981852':{name:'是你的小汪0829'},
-  '7871898411':{name:'梓木喃语'},
-  '7791016273':{name:'先天性超雄圣体'},
-  '5665884286':{name:'William瑾瑜'},
-  '9159145258':{name:'梓渝_潮汐发电站重生版'},
-  '6179787120':{name:'月之必要'},
-};
+// The list is _shared/accounts.json's heat group (read by the relay too; the spare account follows them all).
+const HEAT_ACCOUNTS:Record<string,{name:string}>=Object.fromEntries(Object.entries(WATCHED.heat).map(([uid,name])=>[uid,{name}]));
 const accountName=(uid:string)=>ACCOUNTS[uid]?.name??UPDATE_ACCOUNTS[uid]?.name??HEAT_ACCOUNTS[uid]?.name??uid;
 
 // Only used to download cover images from Weibo's image CDN (no login involved).
@@ -160,16 +154,20 @@ async function alert(kind:'posted'|'failed'|'recovered',title:string,body:string
 
 // --- Processing ---------------------------------------------------------------------------
 // heat: only look at /heat tasks (a post can be both a 紧急 task and a 加热 task).
+// Active means live, or offline but scheduled to go live, and not past its deadline; the database
+// does that filtering, so only active tasks are read however many old ones pile up.
 async function activeTaskWithLink(link:string,heat=false){
-  let query=db.from('tasks').select('id,external_url,status,publish_at,deadline').in('status',['published','offline']);
+  let query=db.from('tasks').select('id,external_url').in('status',['published','offline'])
+    .or('status.eq.published,publish_at.not.is.null').or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`);
   if(heat)query=query.eq('show_in_heat',true);
   const {data,error}=await query;
   if(error)throw new Error('任务查重失败');
-  const now=Date.now();
-  return data.find(t=>(t.status==='published'||t.publish_at)&&(!t.deadline||new Date(t.deadline).getTime()>now)&&normalizeTaskLink(t.external_url)===link)??null;
+  return data.find(t=>normalizeTaskLink(t.external_url)===link)??null;
 }
+// Media for a post is created within minutes of it, so only the last MEDIA_DEDUPE_DAYS are checked.
+const MEDIA_DEDUPE_DAYS=60;
 async function mediaWithLink(link:string){
-  const {data,error}=await db.from('media_items').select('id,external_url');
+  const {data,error}=await db.from('media_items').select('id,external_url').gte('created_at',new Date(Date.now()-MEDIA_DEDUPE_DAYS*864e5).toISOString());
   if(error)throw new Error('物料查重失败');
   return data.find(m=>normalizeTaskLink(m.external_url)===link)??null;
 }
@@ -221,7 +219,7 @@ async function handleUpdate(uid:string,post:Post){
   return null; // task updates don't send WeChat alerts
 }
 // 梓渝's own accounts (not brands, which change): a 加热 post pointing at one of their posts is 红膏.
-const ZIYU_UIDS=new Set(Object.keys(ACCOUNTS));
+const ZIYU_UIDS=new Set(Object.keys(WATCHED.urgent));
 // Whether another post's live 加热 task reposts the post sourceId (weibo_ingest keeps each 加热
 // repost's original as its source_post_id).
 async function liveHeatRepostOf(sourceId:string,exceptPostId:string){

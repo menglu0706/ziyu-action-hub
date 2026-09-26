@@ -1,6 +1,7 @@
 'use client';
 import {useState} from 'react';
 import {AdminCard,AdminShell,StatusTag} from './AdminShell';
+import WATCHED from '@/supabase/functions/_shared/accounts.json';
 
 // Team runbook for the Weibo watcher, complete enough for someone else to run the relay when the
 // owner is away (⑧). It must never contain secret values (cookies, keys) or the spare Weibo
@@ -17,6 +18,8 @@ function Sql({label,code}:{label:string;code:string}){
   return <div className="playbook-sql"><div><span>{label}</span><button type="button" onClick={copy}>{copied||'复制'}</button></div><pre>{code}</pre></div>;
 }
 function Facts({rows}:{rows:[string,React.ReactNode][]}){return <dl className="playbook-facts">{rows.map(([term,value])=><div key={term}><dt>{term}</dt><dd>{value}</dd></div>)}</dl>}
+// Links to watched Weibo accounts (uid -> name, from _shared/accounts.json).
+function AccountLinks({accounts}:{accounts:Record<string,string>}){return <>{Object.entries(accounts).map(([uid,name],i)=><span key={uid}>{i>0&&' · '}<a href={`https://weibo.com/u/${uid}`} target="_blank" rel="noreferrer">{name}</a></span>)}</>}
 function Steps({children}:{children:React.ReactNode}){return <ol className="playbook-steps">{children}</ol>}
 function Mode({id,title,tag,tone,children}:{id:string;title:string;tag:string;tone:'red'|'gold'|'blue'|'green';children:React.ReactNode}){
   return <AdminCard className="playbook-card"><section id={id}><div className="playbook-head"><h2>{title}</h2><StatusTag tone={tone}>{tag}</StatusTag></div>{children}</section></AdminCard>;
@@ -43,7 +46,7 @@ export function AdminPlaybook(){
         <tr><td>我是梓渝_ · 梓渝超话</td><td>在超话内发的帖子（这些不会出现在关注动态里，单独读取）</td><td>宝梓超话营业啦，快来！！</td><td>第一句（语音显示为「发了一条 N 秒的语音」）</td><td>有图片 / 视频 / 语音的帖子</td></tr>
         <tr><td>梓渝ZIYU工作室</td><td>只处理原创</td><td>第一句</td><td>无</td><td>有图片 / 视频 / 语音的原创</td></tr>
         <tr><td>月之必要</td><td>只处理含「打榜任务 / 打木旁任务 / 打木旁rw / 打榜rw」的原创</td><td colSpan={3}><b>不新建任务</b>，而是把日常任务「YUNI音乐日常任务」的「一句话最快做法」替换为这条微博的全文。原内容记录在监控日志里，需要时可手动恢复。含「加热」的微博按下面的加热规则处理，其他微博直接忽略。</td></tr>
-        <tr><td>加热账号（划破晨昏线、是你的小汪0829、梓木喃语、先天性超雄圣体、William瑾瑜、梓渝_潮汐发电站重生版，以及月之必要）</td><td>转发，或带其他微博链接的原创（转发的转发、原帖已在加热列表的转发、其他账号已为同一原帖发过加热任务的转发（以最先发布的为准）、星品 / 新宣任务不处理）。依次判断：自己的文字含控评 / 空指令（🈳、前排、控评、控一下、空瓶、速空 / 来空 / 去空、空一下、空这条；「空腹」「控制」等普通词语不算）或链接到评论为<b>空瓶</b>；转发、链接梓渝本人 / 工作室 / 小喇叭的微博（品牌账号不算），或同时含红膏关键词和加热指令的为<b>红膏</b>（关键词：梓渝 / YUNI / 芋泥；以及红膏 / 热搜 / 蓝V / 公益 / 官号 / 正向 / rs，这些只在没有别家话题时算）（只提到梓渝、没有加热指令的不算，例如打榜催进度）；其余自己的文字含加热指令（加热 / 加🔥 / ➕🔥、3k👍 / 万赞 / 千转等目标、速来 / 点…热门 / 外显 / 艾特智搜）的为<b>空瓶</b>（只看自己的文字，被转发的原帖不算；只带话题不算加热指令）。都不符合的忽略。</td><td>「账号名 红膏加热」或「账号名 速来空瓶」</td><td>这条微博第一个链接之前的文字（保留话题）</td><td>无</td></tr>
+        <tr><td>加热账号（{Object.values(WATCHED.heat).join('、')}）</td><td>转发，或带其他微博链接的原创（转发的转发、原帖已在加热列表的转发、其他账号已为同一原帖发过加热任务的转发（以最先发布的为准）、星品 / 新宣任务不处理）。依次判断：自己的文字含控评 / 空指令（🈳、前排、控评、控一下、空瓶、速空 / 来空 / 去空、空一下、空这条；「空腹」「控制」等普通词语不算）或链接到评论为<b>空瓶</b>；转发、链接梓渝本人 / 工作室 / 小喇叭的微博（品牌账号不算），或同时含红膏关键词和加热指令的为<b>红膏</b>（关键词：梓渝 / YUNI / 芋泥；以及红膏 / 热搜 / 蓝V / 公益 / 官号 / 正向 / rs，这些只在没有别家话题时算）（只提到梓渝、没有加热指令的不算，例如打榜催进度）；其余自己的文字含加热指令（加热 / 加🔥 / ➕🔥、3k👍 / 万赞 / 千转等目标、速来 / 点…热门 / 外显 / 艾特智搜）的为<b>空瓶</b>（只看自己的文字，被转发的原帖不算；只带话题不算加热指令）。都不符合的忽略。</td><td>「账号名 红膏加热」或「账号名 速来空瓶」</td><td>这条微博第一个链接之前的文字（保留话题）</td><td>无</td></tr>
         <tr><td><StatusTag tone="blue">加热任务</StatusTag></td><td colSpan={4}>链接到加热账号的这条微博本身。只出现在 /heat，不置顶、不进 /urgent，不发微信提醒。从微博发布时起，红膏保留 10 小时、空瓶保留 6 小时（后台手动发布的默认 6 小时），可在后台修改截止时间；到点后自动下线。/heat 最多显示 15 条：原创在前，转发在后，各自按时间从新到旧；红膏和空瓶同时存在时，每类至少保留 2 条。有新的加热任务时，排不进这 15 条的自动任务会被轮换下线（后台手动发布的不会）。分组显示：红膏在上，空瓶在下（后台手动发布的加热任务归入红膏组），每组按发布时间从新到旧排列并连续编号；到点下线的任务会立即从页面移除并重新编号。</td></tr>
         <tr><td><StatusTag tone="blue">共创微博</StatusTag></td><td colSpan={4}>标题固定为「星品共创百万转百万评千万赞」，描述为「品牌名 星品 共创」（如「有棵树 星品 共创」），不生成物料。</td></tr>
       </tbody></table></div>
@@ -208,10 +211,10 @@ export function AdminPlaybook(){
         <tr><td>Supabase 项目</td><td>ziyu-action-hub（东京 ap-northeast-1）</td></tr>
         <tr><td>读取程序</td><td>负责人家用电脑上的 <code>weibo-relay</code>（约每 3–4 分钟读取一次微博；负责人不在时见 <a href="#relay">⑧</a>）</td></tr>
         <tr><td>监控函数</td><td>Edge Functions → <code>weibo-watcher</code>（处理读取结果；日志也在这里）</td></tr>
-        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务，以及过了截止时间的加热任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）</td></tr>
+        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务，以及过了截止时间的加热任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）、<code>purge-old-auto-data</code>（每天 4:05 删除下线超过 30 天的自动任务和 60 天前的监控记录；后台手动发布的任务不会被删除）</td></tr>
         <tr><td>密钥</td><td>保存在 Supabase，由负责人管理，<b>请勿修改或外传</b></td></tr>
         <tr><td>备用微博账号</td><td>由负责人保管；接手人提前向负责人要好登录方式，存放在团队约定的保管处</td></tr>
-        <tr><td>监控账号<br/>（备用账号必须全部关注）</td><td><b>紧急任务：</b><a href="https://weibo.com/u/8019758392" target="_blank" rel="noreferrer">梓渝的小喇叭0706</a> · <a href="https://weibo.com/u/7352202247" target="_blank" rel="noreferrer">我是梓渝_</a> · <a href="https://weibo.com/u/8009243499" target="_blank" rel="noreferrer">梓渝ZIYU工作室</a><br/><b>打榜更新 + 加热：</b><a href="https://weibo.com/u/6179787120" target="_blank" rel="noreferrer">月之必要</a><br/><b>加热：</b><a href="https://weibo.com/u/7487914503" target="_blank" rel="noreferrer">划破晨昏线</a> · <a href="https://weibo.com/u/7839981852" target="_blank" rel="noreferrer">是你的小汪0829</a> · <a href="https://weibo.com/u/7871898411" target="_blank" rel="noreferrer">梓木喃语</a> · <a href="https://weibo.com/u/7791016273" target="_blank" rel="noreferrer">先天性超雄圣体</a> · <a href="https://weibo.com/u/5665884286" target="_blank" rel="noreferrer">William瑾瑜</a> · <a href="https://weibo.com/u/9159145258" target="_blank" rel="noreferrer">梓渝_潮汐发电站重生版</a></td></tr>
+        <tr><td>监控账号<br/>（备用账号必须全部关注）</td><td><b>紧急任务：</b><AccountLinks accounts={WATCHED.urgent}/><br/><b>打榜更新：</b><AccountLinks accounts={WATCHED.update}/><br/><b>加热：</b><AccountLinks accounts={WATCHED.heat}/></td></tr>
       </tbody></table></div>
       <p className="muted">需要修改规则（标题、描述、处理哪些微博）、调整提醒额度或新增监控账号时，请联系负责人。</p>
     </section></AdminCard>

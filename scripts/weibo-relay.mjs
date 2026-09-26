@@ -10,12 +10,12 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const WATCHER_URL='https://enwmacfmwqaqghyiqskj.supabase.co/functions/v1/weibo-watcher';
-// 加热 accounts: their posts mentioning 加热 become /heat tasks (月之必要 is one too).
-const HEAT_ACCOUNTS={'7487914503':'划破晨昏线','7839981852':'是你的小汪0829','7871898411':'梓木喃语','7791016273':'先天性超雄圣体','5665884286':'William瑾瑜','9159145258':'梓渝_潮汐发电站重生版'};
-const ACCOUNTS={'8019758392':'梓渝的小喇叭0706','7352202247':'我是梓渝_','8009243499':'梓渝ZIYU工作室','6179787120':'月之必要',...HEAT_ACCOUNTS};
+// The watched accounts, shared with the watcher: supabase/functions/_shared/accounts.json.
+const WATCHED=JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)),'..','supabase','functions','_shared','accounts.json'),'utf8'));
+const ACCOUNTS={...WATCHED.urgent,...WATCHED.update,...WATCHED.heat};
 // Accounts whose long posts need their full text (月之必要's 打榜任务 lists replace a task's text;
-// the 加热 accounts' keyword can sit past the cut-off).
-const FULL_TEXT_ACCOUNTS=new Set(['6179787120',...Object.keys(HEAT_ACCOUNTS)]);
+// a 加热 account's instruction can sit past the cut-off).
+const FULL_TEXT_ACCOUNTS=new Set([...Object.keys(WATCHED.update),...Object.keys(WATCHED.heat)]);
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 // A scan every 150-210 s; after 2+ refused scans in a row, 30 min, 1 h, 2 h, up to 4 h apart.
 const nextGapMs=failuresInRow=>failuresInRow<2?150_000+Math.random()*60_000:Math.min(30*2**(failuresInRow-2),240)*60_000;

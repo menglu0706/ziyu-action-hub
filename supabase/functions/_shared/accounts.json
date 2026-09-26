@@ -1,0 +1,20 @@
+{
+  "_readme": "The Weibo accounts the watcher follows, uid -> screen name. Read by the weibo-watcher, scripts/weibo-relay.mjs, scripts/heat-backfill.mjs, /dev/heat and the admin playbook. The spare Weibo account must follow every account here. urgent accounts also need a rule in the watcher's ACCOUNTS (titles, media); update accounts a rule in UPDATE_ACCOUNTS. After a change: restart the relay, then deploy the watcher when adding (the reverse order when removing).",
+  "urgent": {
+    "8019758392": "梓渝的小喇叭0706",
+    "7352202247": "我是梓渝_",
+    "8009243499": "梓渝ZIYU工作室"
+  },
+  "update": {
+    "6179787120": "月之必要"
+  },
+  "heat": {
+    "7487914503": "划破晨昏线",
+    "7839981852": "是你的小汪0829",
+    "7871898411": "梓木喃语",
+    "7791016273": "先天性超雄圣体",
+    "5665884286": "William瑾瑜",
+    "9159145258": "梓渝_潮汐发电站重生版",
+    "6179787120": "月之必要"
+  }
+}
