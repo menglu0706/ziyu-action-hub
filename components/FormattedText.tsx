@@ -3,7 +3,7 @@ import {HEAT_NOTICE} from '@/lib/heat';
 
 // Text the weibo-watcher wrote (加热 descriptions, auto tasks, the 打榜 list it copies into the
 // music task), formatted for reading at a glance: the 先转发扩散再加热 notice in bold red, #话题# and
-// @mentions in blue, goals (3000👍, 万赞, 1k🧱) and 《作品》 in bold, and each numbered item
+// @mentions in blue, goals (3000👍, 万赞, 1k🧱) highlighted in orange, 《作品》 in bold, and each numbered item
 // (1️⃣ 2️⃣ … 🔟) on its own line. Line breaks are kept. Admin-written text is shown as typed.
 const TOKENS=/(#[^#\n]+#|@[\w一-龥-]+|《[^》\n]+》|\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:👍🏻|👍|赞|转|评|🧱|🍎)|[万千]\s*(?:👍|赞|转|评))/gu;
 const ITEM_BREAK=/([^\n])[ \t]*(?=[0-9]️?⃣|🔟)/gu;
@@ -13,7 +13,9 @@ function formatLine(line:string){
   for(const match of line.matchAll(TOKENS)){
     const token=match[0],index=match.index??0;
     if(index>last)parts.push(line.slice(last,index));
-    parts.push(token.startsWith('#')||token.startsWith('@')?<span key={index} className="font-semibold text-[#3f86cc]">{token}</span>:<b key={index} className="text-[#18345a]">{token}</b>);
+    parts.push(token.startsWith('#')||token.startsWith('@')?<span key={index} className="font-semibold text-[#3f86cc]">{token}</span>
+      :token.startsWith('《')?<b key={index} className="text-[#18345a]">{token}</b>
+      :<b key={index} className="rounded-md bg-[#fff1e6] px-1 text-[#e0662f]">{token}</b>);
     last=index+token.length;
   }
   if(last<line.length)parts.push(line.slice(last));

@@ -26,8 +26,12 @@ const linkedAuthors=(html:string)=>[...html.matchAll(/href="https?:\/\/(?:m\.)?w
 // Whether a post's HTML links to at least one other Weibo post.
 const linksPosts=(html:string)=>/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(?:\d+|detail|status)\/\w+/.test(html);
 
+// A 加热 goal: a target count (3000👍, 万赞, 1k🧱, 2🍎) or 🎯.
+export const HEAT_GOAL=/\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:👍|赞|转|评|🧱|🍎)|[万千]\s*(?:👍|赞|转|评)|🎯/u;
+
 // A post's own text up to its first line with a link (to a post, comment or web page); hashtags
-// and @mentions are kept, as that is how 加热 accounts write their instructions.
+// and @mentions are kept, as that is how 加热 accounts write their instructions. If it states a
+// goal, only the phrases carrying one are kept.
 export function heatText(html:string){
   const lines:string[]=[];
   for(const line of html.split(/<br\s*\/?>/)){
@@ -35,7 +39,10 @@ export function heatText(html:string){
     const text=plain(line).replace(/https?:\/\/\S+/g,'').replace(/[ \t]+/g,' ').trim();
     if(text||lines.length)lines.push(text);
   }
-  return lines.join('\n').replace(/\n{3,}/g,'\n\n').trim().slice(0,300);
+  const text=lines.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+  // When the post states a goal, keep only the phrases that carry one: the rest is commentary.
+  const goals=text.split(/\n|(?<=[，。！？!?；;])/).map(part=>part.trim().replace(/[，；;]$/,'')).filter(part=>HEAT_GOAL.test(part));
+  return (goals.length?goals.join('\n'):text).slice(0,300);
 }
 
 // Whether a 加热 account's post becomes a 加热 task, and which kind. Only a repost, or an original
