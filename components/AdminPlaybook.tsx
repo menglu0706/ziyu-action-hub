@@ -33,7 +33,7 @@ export function AdminPlaybook(){
 
     <AdminCard className="playbook-card"><section id="how">
       <h2>系统怎么运作</h2>
-      <p>微博不接受云服务器读取，所以由<b>负责人家用电脑</b>上的读取程序（<code>weibo-relay</code>）约每 3–4 分钟读取一次下面 3 个账号的最新微博，交给 Supabase 的 <code>weibo-watcher</code> 处理。发现新微博后，按规则在 /urgent 生成<b>置顶任务</b>，部分原创微博同时生成 /media 物料。一般发帖后 <b>2–5 分钟</b>网站可见。</p>
+      <p>微博不接受云服务器读取，所以由<b>负责人家用电脑</b>上的读取程序（<code>weibo-relay</code>）约每 3–4 分钟读取一次下面这些账号的最新微博，交给 Supabase 的 <code>weibo-watcher</code> 处理。发现新微博后，按规则在 /urgent 生成<b>置顶任务</b>，部分原创微博同时生成 /media 物料。一般发帖后 <b>2–5 分钟</b>网站可见。</p>
       <p><b>夜间暂停：</b>北京时间 1:00–8:00 不读取微博（这段时间的微博都可以延后处理），卡片显示「夜间暂停」，也不会发出「已停止」提醒。夜间发布的微博会在 8:00 后的第一次扫描中补发。</p>
       <p>家用电脑关机、休眠或断网时读取会暂停；超过 15 分钟没有收到扫描会发出「微博监控已停止」提醒。电脑恢复后会自动补发期间的新微博（每个账号最近约 10 条以内）。</p>
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>账号</th><th>处理哪些微博</th><th>任务标题</th><th>描述</th><th>物料</th></tr></thead><tbody>
@@ -41,7 +41,9 @@ export function AdminPlaybook(){
         <tr><td>我是梓渝_</td><td>原创 + 转发</td><td>原创：宝梓营业啦，快快来！！百万转，百万评！<br/>直播：宝梓直播啦快来！！！！<br/>转发：任务博来啦，快来zzp!</td><td>第一句</td><td>有图片 / 视频 / 语音的原创（非直播）</td></tr>
         <tr><td>我是梓渝_ · 梓渝超话</td><td>在超话内发的帖子（这些不会出现在关注动态里，单独读取）</td><td>宝梓超话营业啦，快来！！</td><td>第一句（语音显示为「发了一条 N 秒的语音」）</td><td>有图片 / 视频 / 语音的帖子</td></tr>
         <tr><td>梓渝ZIYU工作室</td><td>只处理原创</td><td>第一句</td><td>无</td><td>有图片 / 视频 / 语音的原创</td></tr>
-        <tr><td>月之必要</td><td>只处理含「打榜任务 / 打木旁任务 / 打木旁rw / 打榜rw」的原创</td><td colSpan={3}><b>不新建任务</b>，而是把日常任务「YUNI音乐日常任务」的「一句话最快做法」替换为这条微博的全文。其他微博直接忽略。原内容记录在监控日志里，需要时可手动恢复。</td></tr>
+        <tr><td>月之必要</td><td>只处理含「打榜任务 / 打木旁任务 / 打木旁rw / 打榜rw」的原创</td><td colSpan={3}><b>不新建任务</b>，而是把日常任务「YUNI音乐日常任务」的「一句话最快做法」替换为这条微博的全文。原内容记录在监控日志里，需要时可手动恢复。含「加热」的微博按下面的加热规则处理，其他微博直接忽略。</td></tr>
+        <tr><td>加热账号（7487914503、7839981852、7871898411、7791016273、5665884286，以及月之必要）</td><td>原创 + 转发，只处理含「加热」的微博</td><td>第一句</td><td>无</td><td>无</td></tr>
+        <tr><td><StatusTag tone="blue">加热任务</StatusTag></td><td colSpan={4}>只出现在 /heat，不置顶、不进 /urgent，不发微信提醒。转发微博的任务链接到被转发的原帖。截止时间默认 6 小时，可在后台修改；到点后自动下线。</td></tr>
         <tr><td><StatusTag tone="blue">共创微博</StatusTag></td><td colSpan={4}>标题固定为「星品共创百万转百万评千万赞」，描述为「品牌名 星品 共创」（如「有棵树 星品 共创」），不生成物料。</td></tr>
       </tbody></table></div>
       <div className="playbook-note"><b>基本规则</b>

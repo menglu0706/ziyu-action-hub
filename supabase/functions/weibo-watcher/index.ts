@@ -30,6 +30,8 @@ const TOPIC_KEY='topic:梓渝超话',TOPIC_TITLE='宝梓超话营业啦，快来
 const PRIORITY_UID='7352202247',PRIORITY_PIN_MS=6*3600e3;
 // Auto tasks go offline this long after creation (migration 019's job does the switch).
 const TASK_TTL_MS=24*3600e3;
+// 加热 tasks' deadline, the same default the admin form uses.
+const HEAT_TTL_MS=6*3600e3;
 // Short brand names for 共创 co-creators, when cleaning the Weibo screen name isn't enough.
 const BRAND_NAMES:Record<string,string>={'7552817501':'有棵树'};
 const ACCOUNTS:Record<string,Rule>={
@@ -47,7 +49,21 @@ const ACCOUNTS:Record<string,Rule>={
 const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>={
   '6179787120':{name:'月之必要',taskId:'f6eda702-5e58-4a4f-92e9-cbb372dd4f69',keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
 };
-const accountName=(uid:string)=>ACCOUNTS[uid]?.name??UPDATE_ACCOUNTS[uid]?.name??uid;
+// Accounts dedicated to 加热: their posts matching HEAT_KEYWORDS become /heat tasks -- never
+// pinned, not on /urgent, with a deadline HEAT_TTL_MS away (admins can change it). A repost's task
+// links to the reposted post. Their other posts are ignored without a log entry. An account can
+// also be in UPDATE_ACCOUNTS; a post matching its update keywords is handled as an update instead.
+// Each account must also be in the relay's ACCOUNTS (and followed by the spare account).
+const HEAT_KEYWORDS=/加热/;
+const HEAT_ACCOUNTS:Record<string,{name:string}>={
+  '7487914503':{name:'加热号 7487914503'},
+  '7839981852':{name:'加热号 7839981852'},
+  '7871898411':{name:'加热号 7871898411'},
+  '7791016273':{name:'加热号 7791016273'},
+  '5665884286':{name:'加热号 5665884286'},
+  '6179787120':{name:'月之必要'},
+};
+const accountName=(uid:string)=>ACCOUNTS[uid]?.name??UPDATE_ACCOUNTS[uid]?.name??HEAT_ACCOUNTS[uid]?.name??uid;
 
 // Only used to download cover images from Weibo's image CDN (no login involved).
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
@@ -143,8 +159,11 @@ async function alert(kind:'posted'|'failed'|'recovered',title:string,body:string
 }
 
 // --- Processing ---------------------------------------------------------------------------
-async function activeTaskWithLink(link:string){
-  const {data,error}=await db.from('tasks').select('id,external_url,status,publish_at,deadline').in('status',['published','offline']);
+// heat: only look at /heat tasks (a post can be both a 紧急 task and a 加热 task).
+async function activeTaskWithLink(link:string,heat=false){
+  let query=db.from('tasks').select('id,external_url,status,publish_at,deadline').in('status',['published','offline']);
+  if(heat)query=query.eq('show_in_heat',true);
+  const {data,error}=await query;
   if(error)throw new Error('任务查重失败');
   const now=Date.now();
   return data.find(t=>(t.status==='published'||t.publish_at)&&(!t.deadline||new Date(t.deadline).getTime()>now)&&normalizeTaskLink(t.external_url)===link)??null;
@@ -201,11 +220,37 @@ async function handleUpdate(uid:string,post:Post){
   }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
   return null; // task updates don't send WeChat alerts
 }
+async function handleHeat(uid:string,post:Post){
+  if(!HEAT_KEYWORDS.test(plain(post.longText??post.text)))return null;
+  const src=post.retweeted_status??post;
+  const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
+  const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:src.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
+  if(!claimed?.length)return null;
+  try{
+    const link=postUrl(src);
+    const {data:earlier}=await db.from('weibo_ingest').select('post_id').eq('source_post_id',src.id).eq('kind','heat').eq('status','published').limit(1);
+    if(earlier?.length){await finish({status:'skipped',reason:'同一原帖已生成加热任务'});return null}
+    if(await activeTaskWithLink(normalizeTaskLink(link),true)){await finish({status:'skipped',reason:'已存在相同链接的加热任务'});return null}
+    const p=parse(post);
+    const title=p.sentence||'加热任务来啦，快来！';
+    const {data:task,error}=await db.from('tasks').insert({
+      title,description:null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往原博：转发、评论、点赞',
+      urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
+      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:src.id,
+    }).select('id').single();
+    if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
+    await finish({status:'published',title:`加热：${title}`,task_id:task.id});
+  }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
+  return null; // 加热 tasks don't send WeChat alerts
+}
 const sameText=(a:string|null,b:string|null)=>(a??'').replace(/\s+/g,'')===(b??'').replace(/\s+/g,'');
 
 // fromTopic: a post 我是梓渝_ made inside the 梓渝 超话, which never reaches followers' feeds.
 async function handle(uid:string,post:Post,fromTopic=false){
-  if(UPDATE_ACCOUNTS[uid])return handleUpdate(uid,post);
+  const update=UPDATE_ACCOUNTS[uid];
+  if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))return handleUpdate(uid,post);
+  if(HEAT_ACCOUNTS[uid])return handleHeat(uid,post);
+  if(update)return null;
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
   const base={post_id:post.id,uid,source_post_id:src.id,posted_at:new Date(post.created_at).toISOString()};
@@ -282,7 +327,7 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
       if(seen!==undefined)for(const post of posts)if(BigInt(post.id)>seen)fresh.push({uid,post,fromTopic});
       if(seen===undefined||newest>seen)advance.push({key,newest});
     };
-    for(const uid of [...Object.keys(ACCOUNTS),...Object.keys(UPDATE_ACCOUNTS)]){
+    for(const uid of new Set([...Object.keys(ACCOUNTS),...Object.keys(UPDATE_ACCOUNTS),...Object.keys(HEAT_ACCOUNTS)])){
       const relayError=body.errors?.[uid];
       if(relayError||!body.feeds?.[uid]){failures.push(`${accountName(uid)}：${relayError??'家用电脑没有发送该账号的数据'}`);continue}
       collect(uid,uid,body.feeds[uid],false);
