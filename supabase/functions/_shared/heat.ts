@@ -11,9 +11,10 @@ export type HeatKind='红膏'|'空瓶';
 export type HeatResult={kind:HeatKind;repost:boolean;description:string}|{skip:string};
 
 const POSITIVE_KEYWORDS=/梓渝|yuni|芋泥/i;
-// 🈳 / 空 / 控 (控评, 空瓶) or 前排 in a post's own text make it 空瓶, whatever else it says; so do
-// links to specific comments (liking front-row comments is 控评).
-const KONG_MARKERS=/🈳|空|控|前排/u;
+// 控评 / 空 instructions in a post's own text make it 空瓶, whatever else it says: 🈳, 前排, or 空 /
+// 控 as an instruction (控评, 控一下, 空瓶, 速空, 来空, 去空, 空一下, 空这条) -- not inside ordinary
+// words like 空腹 or 控制. So do links to specific comments (liking front-row comments is 控评).
+const KONG_MARKERS=/🈳|前排|控评|控一下|空瓶|[速来去]空|空一下|空这/u;
 const linksComments=(html:string)=>/href="[^"]*(?:detailbulletincomment|comment_id)/.test(html);
 // 星品 / 新宣 progress posts are a different kind of task, not 加热.
 const STAR_PRODUCT=/星品|新宣/u;
