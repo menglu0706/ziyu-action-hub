@@ -17,6 +17,8 @@ const KONG_MARKERS=/🈳|空|控/u;
 const HEAT_MARKERS=/加热|[加➕]🔥/u;
 // Links in a post's HTML to other Weibo posts, as the uids of their authors.
 const linkedAuthors=(html:string)=>[...html.matchAll(/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(\d+)\/\w+/g)].map(m=>m[1]);
+// Whether a post's HTML links to at least one other Weibo post.
+const linksPosts=(html:string)=>/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(?:\d+|detail|status)\/\w+/.test(html);
 
 // A post's own text up to its first line with a link (to a post, comment or web page); hashtags
 // and @mentions are kept, as that is how 加热 accounts write their instructions.
@@ -30,7 +32,8 @@ export function heatText(html:string){
   return lines.join('\n').replace(/\n{3,}/g,'\n\n').trim().slice(0,300);
 }
 
-// Whether a 加热 account's post becomes a 加热 task, and which kind, checked in this order:
+// Whether a 加热 account's post becomes a 加热 task, and which kind. Only a repost, or an original
+// post that links to other posts, can be one. Then, in this order:
 //   空瓶 (a fight, 控评 / 空): its own text has one of KONG_MARKERS;
 //   红膏 (broadcasting good news): its own text mentions POSITIVE_KEYWORDS, or it reposts or links a
 //     post by one of ziyuUids (梓渝's own accounts and brands);
@@ -39,6 +42,7 @@ export function heatText(html:string){
 export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
   const html=post.longText??post.text,rt=post.retweeted_status;
   if(rt&&/\/\/\s*<a [^>]*>@|\/\/\s*@/.test(html))return {skip:'转发的转发'};
+  if(!rt&&!linksPosts(html))return {skip:'原创但没有引用其他微博'};
   const own=plain(html);
   const kong=KONG_MARKERS.test(own);
   const positive=!kong&&(POSITIVE_KEYWORDS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
