@@ -6,7 +6,7 @@
 //                          get their real 6-hour window, as if /heat were opened at crawl time.
 import {notFound} from 'next/navigation';
 import {MobileHeader} from '@/components/MobileHeader';
-import {TaskCard} from '@/components/TaskCard';
+import {HeatList} from '@/components/HeatList';
 import {classifyHeat,heatTitle,type HeatPost} from '@/lib/heat';
 import {HEAT_TAB_LIMIT,pickHeatTasks} from '@/lib/heatList';
 import type {Task} from '@/lib/types';
@@ -51,7 +51,7 @@ export default async function HeatPreview({searchParams}:{searchParams:Promise<{
   return <main className="phone-shell"><MobileHeader title="加热任务 · 样例预览"/><div className="page-pad">
     <p className="mb-2 mt-0 text-xs font-bold"><a href="/dev/heat">样例</a> · <a href="/dev/heat?source=crawl">真实抓取</a>{fromCrawlSource&&<span className="font-medium text-[#7890a6]">（按 {new Date(asOf).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})} 时的 /heat 计算）</span>}</p>
     <p className="mb-3 mt-0 text-xs font-medium text-[#7890a6]">{posts.length} 条微博，{tasks.length} 条生成任务（{kinds(tasks)}）。/heat 显示 {shown.length} 条（{kinds(shown)}），原创在前。</p>
-    <div className="space-y-3">{shown.map(task=><TaskCard key={task.id} task={task} urgent heat/>)}</div>
+    <HeatList tasks={shown}/>
     <h2 className="section-title mb-2 mt-6">每条微博的处理结果（按发布时间）</h2>
     <div className="card overflow-x-auto p-3"><table className="w-full text-left text-xs leading-5"><thead><tr className="text-[#7890a6]"><th className="pr-2">微博</th><th className="pr-2">账号</th><th className="pr-2">时间</th><th className="pr-2">类型</th><th>结果</th></tr></thead><tbody>
       {rows.map(({post,url,outcome,task})=><tr key={post.id} className="border-t border-[#e4edf4] align-top"><td className="py-1 pr-2"><a href={url} target="_blank" rel="noreferrer">{post.bid}</a></td><td className="py-1 pr-2">{post.user.screen_name}</td><td className="py-1 pr-2 whitespace-nowrap">{new Date(post.created_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td><td className="py-1 pr-2">{post.retweeted_status?'转发':'原创'}</td><td className="py-1">{task?<><b>{outcome}</b>{shownIds.has(task.id)?'':`（超出 ${HEAT_TAB_LIMIT} 条，未显示）`}</>:<span className="text-[#d75454]">{outcome}</span>}</td></tr>)}
