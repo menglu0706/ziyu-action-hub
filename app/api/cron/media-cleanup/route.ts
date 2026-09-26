@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {createAdminClient} from '@/lib/supabase/admin';
 
-// Daily Vercel cron (see vercel.json). /media stops showing items after 7 days, so a cover
+// Daily Vercel cron (see vercel.json). /media stops showing items after 10 days, so a cover
 // image is dead weight 14 days after publishing: delete the file from the content-images
 // bucket and clear cover_url, keeping the media_items row as history. Only the media/ folder
 // is touched -- visual/ (page backgrounds) and externally hosted covers are left alone.
