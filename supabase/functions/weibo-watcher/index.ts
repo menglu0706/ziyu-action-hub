@@ -49,12 +49,17 @@ const ACCOUNTS:Record<string,Rule>={
 const UPDATE_ACCOUNTS:Record<string,{name:string;taskId:string;keywords:RegExp}>={
   '6179787120':{name:'月之必要',taskId:'f6eda702-5e58-4a4f-92e9-cbb372dd4f69',keywords:/打榜任务|打木旁任务|打木旁rw|打榜rw/i}, // YUNI音乐日常任务
 };
-// Accounts dedicated to 加热: their posts matching HEAT_KEYWORDS become /heat tasks -- never
-// pinned, not on /urgent, with a deadline HEAT_TTL_MS away (admins can change it). A repost's task
-// links to the reposted post. Their other posts are ignored without a log entry. An account can
-// also be in UPDATE_ACCOUNTS; a post matching its update keywords is handled as an update instead.
+// Accounts dedicated to 加热. Each of their posts or reposts (not a repost of a repost) becomes a
+// /heat task linking to that post itself, when it is either
+//   红膏 (broadcasting good news): their own text mentions POSITIVE_KEYWORDS, or it reposts or links
+//     a post by 梓渝's own accounts or brands; this wins over the next one, or
+//   空瓶 (a fight): it carries a hashtag (in their text or the reposted post) and isn't 红膏.
+// Other posts are ignored without a log entry. The description is their text up to the first
+// link line. Tasks are never pinned, not on /urgent, with a deadline HEAT_TTL_MS away (admins can
+// change it); /heat lists original posts before reposts. An account can also be in UPDATE_ACCOUNTS;
+// a post matching its update keywords is handled as an update instead.
 // Each account must also be in the relay's ACCOUNTS (and followed by the spare account).
-const HEAT_KEYWORDS=/加热/;
+const POSITIVE_KEYWORDS=/梓渝|yuni|芋泥/i;
 const HEAT_ACCOUNTS:Record<string,{name:string}>={
   '7487914503':{name:'划破晨昏线'},
   '7839981852':{name:'是你的小汪0829'},
@@ -221,26 +226,45 @@ async function handleUpdate(uid:string,post:Post){
   }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
   return null; // task updates don't send WeChat alerts
 }
+// 梓渝's own accounts and brands: a 加热 post pointing at one of their posts is 红膏.
+const ZIYU_UIDS=new Set([...Object.keys(ACCOUNTS),...Object.keys(BRAND_NAMES)]);
+// Links in a post's HTML to other Weibo posts, as the uids of their authors.
+const linkedAuthors=(html:string)=>[...html.matchAll(/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(\d+)\/\w+/g)].map(m=>m[1]);
+// A post's own text up to its first line with a link (to a post, comment or web page); hashtags
+// and @mentions are kept, as that is how 加热 accounts write their instructions.
+function heatText(html:string){
+  const lines=[];
+  for(const line of html.split(/<br\s*\/?>/)){
+    if(/<a [^>]*href="(?![^"]*containerid=231522)(?!\/n\/)[^"]*"/.test(line))break;
+    const text=plain(line).replace(/https?:\/\/\S+/g,'').replace(/[ \t]+/g,' ').trim();
+    if(text||lines.length)lines.push(text);
+  }
+  return lines.join('\n').replace(/\n{3,}/g,'\n\n').trim().slice(0,300);
+}
 async function handleHeat(uid:string,post:Post){
-  if(!HEAT_KEYWORDS.test(plain(post.longText??post.text)))return null;
-  const src=post.retweeted_status??post;
+  const html=post.longText??post.text,rt=post.retweeted_status;
+  // A repost of a repost carries the "//@name:" chain; only first-hand posts count.
+  if(rt&&/\/\/\s*<a [^>]*>@|\/\/\s*@/.test(html))return null;
+  const own=plain(html);
+  const positive=POSITIVE_KEYWORDS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ZIYU_UIDS.has(id));
+  const fight=!positive&&/#[^#\n]+#/.test(own+(rt?plain(rt.text):''));
+  if(!positive&&!fight)return null;
   const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
-  const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:src.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
+  const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
   if(!claimed?.length)return null;
   try{
-    const link=postUrl(src);
-    const {data:earlier}=await db.from('weibo_ingest').select('post_id').eq('source_post_id',src.id).eq('kind','heat').eq('status','published').limit(1);
-    if(earlier?.length){await finish({status:'skipped',reason:'同一原帖已生成加热任务'});return null}
+    const link=postUrl(post);
     if(await activeTaskWithLink(normalizeTaskLink(link),true)){await finish({status:'skipped',reason:'已存在相同链接的加热任务'});return null}
-    const p=parse(post);
-    const title=p.sentence||'加热任务来啦，快来！';
+    const name=post.user?.screen_name||HEAT_ACCOUNTS[uid].name;
+    const title=`${name} ${positive?'红膏加热':'速来空瓶'}`;
     const {data:task,error}=await db.from('tasks').insert({
-      title,description:null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往原博：转发、评论、点赞',
+      title,description:heatText(html)||null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往博文，按要求加热',
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
-      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:src.id,
+      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:Boolean(rt),
+      show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:post.id,
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
-    await finish({status:'published',title:`加热：${title}`,task_id:task.id});
+    await finish({status:'published',title,task_id:task.id});
   }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
   return null; // 加热 tasks don't send WeChat alerts
 }
