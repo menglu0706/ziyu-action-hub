@@ -222,29 +222,36 @@ async function handleUpdate(uid:string,post:Post){
 }
 // 梓渝's own accounts and brands: a 加热 post pointing at one of their posts is 红膏.
 const ZIYU_UIDS=new Set([...Object.keys(ACCOUNTS),...Object.keys(BRAND_NAMES)]);
-async function handleHeat(uid:string,post:Post){
+// Returns what happened to the post, for backfill reports; scans ignore it (加热 tasks send no
+// WeChat alerts). deadline defaults to HEAT_TTL_MS from now; a backfill passes the post's own.
+async function handleHeat(uid:string,post:Post,deadline=new Date(Date.now()+HEAT_TTL_MS)):Promise<string>{
   const heat=classifyHeat(post,ZIYU_UIDS);
-  if('skip' in heat)return null;
+  if('skip' in heat)return `忽略：${heat.skip}`;
   const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
   const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:post.id,kind:'heat',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
-  if(!claimed?.length)return null;
+  if(!claimed?.length)return '已处理过';
   try{
     const link=postUrl(post),rt=post.retweeted_status;
-    if(await activeTaskWithLink(normalizeTaskLink(link),true)){await finish({status:'skipped',reason:'已存在相同链接的加热任务'});return null}
+    const skip=async(reason:string)=>{await finish({status:'skipped',reason});return `跳过：${reason}`};
+    if(await activeTaskWithLink(normalizeTaskLink(link),true))return skip('已存在相同链接的加热任务');
     // A repost of a post that is already on /heat (e.g. another 加热 account's own post) adds nothing.
-    if(rt&&await activeTaskWithLink(normalizeTaskLink(postUrl(rt)),true)){await finish({status:'skipped',reason:'原帖已在加热列表'});return null}
+    if(rt&&await activeTaskWithLink(normalizeTaskLink(postUrl(rt)),true))return skip('原帖已在加热列表');
     const name=post.user?.screen_name||HEAT_ACCOUNTS[uid].name;
     const title=heatTitle(name,heat.kind);
     const {data:task,error}=await db.from('tasks').insert({
       title,description:heat.description||null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往博文，按要求加热',
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
-      deadline:new Date(Date.now()+HEAT_TTL_MS).toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:heat.repost,heat_kind:heat.kind,
+      deadline:deadline.toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:heat.repost,heat_kind:heat.kind,
       show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:post.id,
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
     await finish({status:'published',title,task_id:task.id});
-  }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
-  return null; // 加热 tasks don't send WeChat alerts
+    return `已创建：${title}`;
+  }catch(error){
+    const reason=error instanceof Error?error.message:String(error);
+    await finish({status:'failed',reason});
+    return `失败：${reason}`;
+  }
 }
 const sameText=(a:string|null,b:string|null)=>(a??'').replace(/\s+/g,'')===(b??'').replace(/\s+/g,'');
 
@@ -252,7 +259,7 @@ const sameText=(a:string|null,b:string|null)=>(a??'').replace(/\s+/g,'')===(b??'
 async function handle(uid:string,post:Post,fromTopic=false){
   const update=UPDATE_ACCOUNTS[uid];
   if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))return handleUpdate(uid,post);
-  if(HEAT_ACCOUNTS[uid])return handleHeat(uid,post);
+  if(HEAT_ACCOUNTS[uid]){await handleHeat(uid,post);return null}
   if(update)return null;
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
@@ -367,6 +374,23 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
 
 // Adds /media items (no tasks, no pins) for specific posts the watcher missed, e.g. ones from before
 // a feed was first watched. Same media rules and duplicate check as a normal scan.
+// Adds 加热 tasks for 加热 accounts' posts the watcher never saw (e.g. from before a feed's first
+// scan), with the same rules and duplicate checks as a scan. Each task's 6 hours count from its
+// post, so posts already older than that are skipped; 打榜 update posts are left alone.
+async function backfillHeat(posts:Post[]){
+  const results:{post:string;account:string;outcome:string}[]=[];
+  for(const post of posts){
+    const uid=String(post.user?.id),update=UPDATE_ACCOUNTS[uid];
+    const report=(outcome:string)=>results.push({post:post.bid??post.id,account:accountName(uid),outcome});
+    const ends=new Date(post.created_at).getTime()+HEAT_TTL_MS;
+    if(!HEAT_ACCOUNTS[uid])report('忽略：不是加热账号');
+    else if(ends<=Date.now())report('忽略：发布已超过 6 小时');
+    else if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))report('忽略：打榜任务更新（不补）');
+    else report(await handleHeat(uid,post,new Date(ends)));
+  }
+  return Response.json({results});
+}
+
 async function backfillMedia(posts:Post[]){
   const created:string[]=[],skipped:string[]=[];
   for(const post of posts){
@@ -425,6 +449,7 @@ Deno.serve(async req=>{
   if(!settings.enabled)return Response.json({skipped:'disabled'});
   if(body.mode==='relay')return relayScan(body as RelayBody,settings);
   if(body.mode==='backfill-media')return backfillMedia((body as {posts?:Post[]}).posts??[]);
+  if(body.mode==='backfill-heat')return backfillHeat((body as {posts?:Post[]}).posts??[]);
   // Retags every media item the watcher created (source_post_id set) with MEDIA_CATEGORY.
   if(body.mode==='retag-media'){
     const {data,error}=await db.from('media_items').update({category:MEDIA_CATEGORY}).not('source_post_id','is',null).neq('category',MEDIA_CATEGORY).select('id,title');
