@@ -10,7 +10,11 @@ export type HeatPost={text:string;longText?:string;retweeted_status?:{text:strin
 export type HeatKind='红膏'|'空瓶';
 export type HeatResult={kind:HeatKind;repost:boolean;description:string}|{skip:string};
 
+// 红膏 keywords: 梓渝's own names always count; the general words only when the post carries no
+// one else's hashtag (a hashtag not about 梓渝), since fights push 热搜 too.
 const POSITIVE_KEYWORDS=/梓渝|yuni|芋泥/i;
+const POSITIVE_WORDS=/红膏|热搜|蓝v|公益|官号|正向|(?<![a-z])rs(?![a-z])/i;
+const othersHashtag=(text:string)=>(text.match(/#[^#\n]+#/g)??[]).some(tag=>!POSITIVE_KEYWORDS.test(tag));
 // 控评 / 空 instructions in a post's own text make it 空瓶, whatever else it says: 🈳, 前排, or 空 /
 // 控 as an instruction (控评, 控一下, 空瓶, 速空, 来空, 去空, 空一下, 空这条) -- not inside ordinary
 // words like 空腹 or 控制. So do links to specific comments (liking front-row comments is 控评).
@@ -52,8 +56,9 @@ export function goalsOnly(text:string){
 // post that links to other posts, can be one, and never a 星品 post. Then, in this order:
 //   空瓶 (a fight, 控评 / 空): its own text has one of KONG_MARKERS, or it links to comments;
 //   红膏 (broadcasting good news): it reposts or links a post by one of ziyuUids (梓渝's own accounts;
-//     no brands, which change), or its own text mentions POSITIVE_KEYWORDS together with one of HEAT_MARKERS (a
-//     梓渝 mention alone, e.g. a 打榜 push, is not a 加热 call);
+//     no brands, which change), or its own text has one of HEAT_MARKERS together with a 红膏 keyword:
+//     POSITIVE_KEYWORDS, or POSITIVE_WORDS when it carries no one else's hashtag (a 梓渝 mention
+//     alone, e.g. a 打榜 push, is not a 加热 call);
 //   空瓶: its own text has one of HEAT_MARKERS. A hashtag alone isn't an instruction, and the
 //     reposted post's text doesn't count.
 // A repost of a repost (its text carries the "//@name:" chain) is ignored, as is anything else.
@@ -64,7 +69,8 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
   const own=plain(html);
   if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
   const kong=KONG_MARKERS.test(own)||linksComments(html);
-  const positive=!kong&&(POSITIVE_KEYWORDS.test(own)&&HEAT_MARKERS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
+  const positiveWords=POSITIVE_KEYWORDS.test(own)||POSITIVE_WORDS.test(own)&&!othersHashtag(own);
+  const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
   if(!positive&&!fight)return {skip:'没有梓渝关键词或加热指令'};
   return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:withHeatNotice(heatText(html))};
