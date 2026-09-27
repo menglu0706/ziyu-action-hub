@@ -17,7 +17,7 @@ import WATCHED from '@/supabase/functions/_shared/accounts.json';
 
 type Sample=HeatPost&{bid:string;id:string;created_at:string;user:{id:number;screen_name:string};retweeted_status?:{bid:string;user:{id:number}}};
 // Same as the watcher's ZIYU_UIDS: 梓渝's own watched accounts.
-const ZIYU_UIDS=new Set(Object.keys(WATCHED.urgent));
+const ZIYU_UIDS=new Set(Object.keys(WATCHED.urgent)),PERSONAL_UIDS=new Set(Object.keys(WATCHED.personal));
 // The YUNI音乐日常任务 as 月之必要's 9.27 打榜 post would leave it, to preview formatted auto text.
 const MUSIC_SAMPLE:Task={id:'music-sample',title:'YUNI音乐日常任务',platform:'QQ音乐',category:'音乐',urgency:70,required:70,minutes:5,deadline:null,
   quick:'[音乐]9.27日重点打榜任务[音乐]\n1️⃣由你：都给《时间漫步》\n👉由你周年《贰拾肆》维持第一\n2️⃣JTMN：加入发电站👉 再完成任务给《贰拾肆》《不渝》',
@@ -38,7 +38,7 @@ export default async function HeatPreview({searchParams}:{searchParams:Promise<{
   const asOf=fromCrawlSource?Math.max(...posts.map(time)):Date.now(),listedUrls=new Set<string>(),repostedOriginals=new Map<string,string>();
   const rows=[...posts].sort((a,b)=>time(a)-time(b)).map(post=>{
     const url=postUrl(post.user.id,post.bid),rt=post.retweeted_status;
-    const result=classifyHeat(post,ZIYU_UIDS);
+    const result=classifyHeat(post,ZIYU_UIDS,PERSONAL_UIDS);
     if('skip' in result)return {post,url,outcome:`忽略：${result.skip}`,task:null};
     const ends=(fromCrawlSource?time(post):asOf)+heatTtl(result.kind);
     if(ends<=asOf)return {post,url,outcome:`${result.kind}，但已过 ${heatTtl(result.kind)/3600e3} 小时（已下线）`,task:null};

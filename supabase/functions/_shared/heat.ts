@@ -62,15 +62,19 @@ export function goalsOnly(text:string){
 //   空瓶: its own text has one of HEAT_MARKERS. A hashtag alone isn't an instruction, and the
 //     reposted post's text doesn't count.
 // A repost of a repost (its text carries the "//@name:" chain) is ignored, as is anything else.
-export function classifyHeat(post:HeatPost,ziyuUids:Set<string>):HeatResult{
+// personalUids: 梓渝's personal account(s). A post whose every linked or reposted post is theirs is
+// skipped -- those posts already get a 紧急 task -- unless it also links comments (控评 is separate).
+export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set<string>=new Set()):HeatResult{
   const html=post.longText??post.text,rt=post.retweeted_status;
   if(rt&&/\/\/\s*<a [^>]*>@|\/\/\s*@/.test(html))return {skip:'转发的转发'};
   if(!rt&&!linksPosts(html))return {skip:'原创但没有引用其他微博'};
+  const targets=[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])];
+  if(targets.length&&targets.every(id=>personalUids.has(id))&&!linksComments(html))return {skip:'目标是梓渝个人博（紧急任务已覆盖）'};
   const own=plain(html);
   if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
   const kong=KONG_MARKERS.test(own)||linksComments(html);
   const positiveWords=POSITIVE_KEYWORDS.test(own)||POSITIVE_WORDS.test(own)&&!othersHashtag(own);
-  const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])].some(id=>ziyuUids.has(id)));
+  const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||targets.some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
   if(!positive&&!fight)return {skip:'没有梓渝关键词或加热指令'};
   return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:withHeatNotice(heatText(html))};

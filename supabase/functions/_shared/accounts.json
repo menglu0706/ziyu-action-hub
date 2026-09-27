@@ -1,9 +1,12 @@
 {
-  "_readme": "The Weibo accounts the watcher follows, uid -> screen name. Read by the weibo-watcher, scripts/weibo-relay.mjs, scripts/heat-backfill.mjs, /dev/heat and the admin playbook. The spare Weibo account must follow every account here. urgent accounts also need a rule in the watcher's ACCOUNTS (titles, media); update accounts a rule in UPDATE_ACCOUNTS. After a change: restart the relay, then deploy the watcher when adding (the reverse order when removing).",
+  "_readme": "The Weibo accounts the watcher follows, uid -> screen name. Read by the weibo-watcher, scripts/weibo-relay.mjs, scripts/heat-backfill.mjs, /dev/heat and the admin playbook. The spare Weibo account must follow every account here. personal is 梓渝's personal account: 加热 posts that only point at its posts are skipped (its posts already get a 紧急 task). urgent accounts also need a rule in the watcher's ACCOUNTS (titles, media); update accounts a rule in UPDATE_ACCOUNTS. After a change: restart the relay, then deploy the watcher when adding (the reverse order when removing).",
   "urgent": {
     "8019758392": "梓渝的小喇叭0706",
     "7352202247": "我是梓渝_",
     "8009243499": "梓渝ZIYU工作室"
+  },
+  "personal": {
+    "7352202247": "我是梓渝_"
   },
   "update": {
     "6179787120": "月之必要"

@@ -219,7 +219,7 @@ async function handleUpdate(uid:string,post:Post){
   return null; // task updates don't send WeChat alerts
 }
 // 梓渝's own accounts (not brands, which change): a 加热 post pointing at one of their posts is 红膏.
-const ZIYU_UIDS=new Set(Object.keys(WATCHED.urgent));
+const ZIYU_UIDS=new Set(Object.keys(WATCHED.urgent)),PERSONAL_UIDS=new Set(Object.keys(WATCHED.personal));
 // Whether another post's live 加热 task reposts the post sourceId (weibo_ingest keeps each 加热
 // repost's original as its source_post_id).
 async function liveHeatRepostOf(sourceId:string,exceptPostId:string){
@@ -245,7 +245,7 @@ async function rotateHeat(){
 // Returns what happened to the post, for backfill reports; scans ignore it (加热 tasks send no
 // WeChat alerts). The task stays up heatTtl(kind) from its post's time.
 async function handleHeat(uid:string,post:Post):Promise<string>{
-  const heat=classifyHeat(post,ZIYU_UIDS);
+  const heat=classifyHeat(post,ZIYU_UIDS,PERSONAL_UIDS);
   if('skip' in heat)return `忽略：${heat.skip}`;
   const deadline=new Date(new Date(post.created_at).getTime()+heatTtl(heat.kind));
   if(deadline.getTime()<=Date.now())return `忽略：${heat.kind}已超过 ${heatTtl(heat.kind)/3600e3} 小时`;
