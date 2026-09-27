@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {attachShareCards} from './shareCards.mjs';
 
 const WATCHER_URL='https://enwmacfmwqaqghyiqskj.supabase.co/functions/v1/weibo-watcher';
 // The watched accounts, shared with the watcher: supabase/functions/_shared/accounts.json.
@@ -69,6 +70,8 @@ async function readFeeds(pages=1){
     // Posts from anyone else the spare account follows are ignored.
     for(const mblog of statuses){const uid=String(mblog.user?.id);if(feeds[uid])feeds[uid].data.cards.push({card_type:9,mblog})}
     await attachFullText(feeds);
+    // 小红书 / 抖音 share cards from the 加热 accounts become /media items (see shareCards.mjs).
+    await attachShareCards(statuses.filter(mblog=>feeds[String(mblog.user?.id)]),new Set(Object.keys(WATCHED.heat)));
     return {feeds};
   }catch(error){return {error:`无法连接微博：${error.message}`}}
 }

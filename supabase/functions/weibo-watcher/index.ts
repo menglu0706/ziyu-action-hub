@@ -21,7 +21,10 @@ type Post={
   pics?:{url:string;large?:{url:string}}[];page_info?:{type?:string;page_pic?:{url?:string}};
   user?:{id:number;screen_name?:string};retweeted_status?:Post;
   cooperate_info?:{owner_uid:number;cooperate_user_list:{idstr:string;screen_name:string}[]};
+  // Added by the home relay (scripts/shareCards.mjs) for 小红书 / 抖音 share-card posts.
+  shareCard?:ShareCard;
 };
+type ShareCard={platform:'小红书'|'抖音';url:string|null;key:string|null;title:string|null;desc:string|null;author:string|null;time:string|null};
 type Parsed={post:Post;src:Post;repost:boolean;live:boolean;cocreate:boolean;brands:string[];sentence:string};
 type Rule={name:string;reposts:boolean;media:boolean;title:(p:Parsed)=>string;description:(p:Parsed)=>string|null};
 
@@ -230,6 +233,46 @@ async function liveHeatRepostOf(sourceId:string,exceptPostId:string){
   return Boolean(live?.length);
 }
 
+// --- 小红书 / 抖音 share cards -------------------------------------------------------------------
+// Only cards about these three become media; everything else is ignored.
+const SHARE_SUBJECTS=/我是梓渝|梓渝工作室|瑞鹤/;
+const beijingDate=(iso:string)=>new Date(new Date(iso).getTime()+8*3600e3).toISOString().slice(0,10);
+// A share card (read by the home relay) as a /media item: title from the card, content = author +
+// topics (+ the 小红书 note's content), cover = the card image. Deduped by share_key: the 小红书 note
+// id, or for 抖音 (whose code can't be read) the author + Beijing date -- they post at most once a day.
+async function handleShareCard(uid:string,post:Post,card:ShareCard):Promise<string>{
+  const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
+  const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:card.key??post.id,kind:'share',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
+  if(!claimed?.length)return '已处理过';
+  const skip=async(reason:string)=>{await finish({status:'skipped',reason});return `跳过：${reason}`};
+  try{
+    const about=[card.author,card.title,card.desc,plain(post.longText??post.text)].join(' ');
+    if(!SHARE_SUBJECTS.test(about))return skip(`${card.platform}分享卡片不涉及梓渝 / 工作室 / 瑞鹤`);
+    const key=card.key??(card.author?`dy:${card.author}:${beijingDate(post.created_at)}`:null);
+    if(!key)return skip(`${card.platform}分享卡片没有读出作者，无法去重`);
+    const {data:existing}=await db.from('media_items').select('id').eq('share_key',key).limit(1);
+    if(existing?.length)return skip('同一条分享已生成物料');
+    const link=card.url??postUrl(post);
+    const title=(card.title??firstSentence(post.text)??'').slice(0,80)||`${card.author??''} ${card.platform}更新`;
+    const description=[[card.author,card.desc].filter(Boolean).join(' · '),card.platform==='抖音'?'保存图片，用抖音「扫一扫」打开':null].filter(Boolean).join('\n')||null;
+    const {data:media,error}=await db.from('media_items').insert({
+      title,description,category:card.platform,published_at:card.time??new Date(post.created_at).toISOString(),
+      cover_url:await copyCover(post),external_url:link,is_enabled:true,source_post_id:post.id,share_key:key,
+    }).select('id').single();
+    if(error){
+      // Two shares of the same post in one scan: the unique share_key keeps just the first.
+      if(error.code==='23505')return skip('同一条分享已生成物料');
+      throw new Error(`物料创建失败：${error.message}`);
+    }
+    await finish({status:'published',title:`${card.platform}：${title}`,media_id:media.id});
+    return `已创建物料：${card.platform} · ${title}`;
+  }catch(error){
+    const reason=error instanceof Error?error.message:String(error);
+    await finish({status:'failed',reason});
+    return `失败：${reason}`;
+  }
+}
+
 // Takes offline the watcher-made 加热 tasks that /heat no longer shows (pickHeat: originals first,
 // newest first, at least 2 of each kind). Tasks made in admin are never rotated out.
 async function rotateHeat(){
@@ -287,6 +330,8 @@ async function handle(uid:string,post:Post,fromTopic=false){
   const update=UPDATE_ACCOUNTS[uid];
   if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))return handleUpdate(uid,post);
   // With the 加热 page switched off in admin, 加热 accounts' posts are passed over (the backfill can add them later).
+  // A 小红书 / 抖音 share card is a /media item, never a 加热 task (and doesn't depend on the 加热 switch).
+  if(HEAT_ACCOUNTS[uid]&&post.shareCard){await handleShareCard(uid,post,post.shareCard);return null}
   if(HEAT_ACCOUNTS[uid]){if(heatEnabled)await handleHeat(uid,post);return null}
   if(update)return null;
   const rule=ACCOUNTS[uid];
@@ -420,9 +465,10 @@ async function backfillHeat(posts:Post[]){
   for(const post of posts){
     const uid=String(post.user?.id),update=UPDATE_ACCOUNTS[uid];
     const report=(outcome:string)=>results.push({post:post.bid??post.id,account:accountName(uid),outcome});
-    if(!heatEnabled)report('忽略：加热页面已关闭');
-    else if(!HEAT_ACCOUNTS[uid])report('忽略：不是加热账号');
+    if(!HEAT_ACCOUNTS[uid])report('忽略：不是加热账号');
+    else if(!heatEnabled&&!post.shareCard)report('忽略：加热页面已关闭');
     else if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))report('忽略：打榜任务更新（不补）');
+    else if(post.shareCard)report(await handleShareCard(uid,post,post.shareCard));
     else report(await handleHeat(uid,post));
   }
   return Response.json({results});

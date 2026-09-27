@@ -1,0 +1,10 @@
+{
+  "name": "action-hub-relay-scripts",
+  "private": true,
+  "description": "Libraries the home-PC relay uses to read 小红书 / 抖音 share cards (QR codes and card text). Install once with `npm install` in this folder; the relay runs without them, it just skips share cards.",
+  "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "jsqr": "^1.4.0",
+    "tesseract.js": "^7.0.0"
+  }
+}

@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {attachShareCards} from './shareCards.mjs';
 
 const WATCHER_URL='https://enwmacfmwqaqghyiqskj.supabase.co/functions/v1/weibo-watcher';
 // The watched accounts, shared with the watcher: supabase/functions/_shared/accounts.json.
@@ -63,6 +64,8 @@ for(const [uid,name] of Object.entries(HEAT_ACCOUNTS)){
 }
 if(!posts.length){console.log('没有需要补的微博。');process.exit(0)}
 
+// 小红书 / 抖音 share cards among them become /media items instead (see shareCards.mjs).
+await attachShareCards(posts,new Set(Object.keys(HEAT_ACCOUNTS)));
 // Oldest first, as a scan would handle them, so an original is listed before reposts of it.
 posts.sort((a,b)=>BigInt(a.id)<BigInt(b.id)?-1:1);
 const res=await fetch(WATCHER_URL,{method:'POST',headers:{'Content-Type':'application/json','x-watcher-key':env.WATCHER_KEY},body:JSON.stringify({mode:'backfill-heat',posts})});
