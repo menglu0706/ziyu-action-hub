@@ -279,18 +279,32 @@ async function handleShareCard(uid:string,post:Post,card:ShareCard):Promise<stri
 // A 加热 post that lists other posts (a collection) replaces the live 加热 tasks already covering
 // them: reposts of a listed post (weibo_ingest keeps a repost's original as source_post_id), and
 // tasks for a listed post itself. Those watcher-made tasks go offline; admin-made ones are kept.
-async function supersedeByCollection(collectionTaskId:string,html:string){
-  const listed=new Set([...html.matchAll(/href="(https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/[^"]+)"/g)].map(m=>normalizeTaskLink(m[1])).filter(link=>link.startsWith('weibo:')));
-  if(!listed.size)return 0;
-  const mids=[...listed].map(link=>link.slice('weibo:'.length));
-  const [{data:reposts},{data:live}]=await Promise.all([
-    db.from('weibo_ingest').select('task_id').eq('kind','heat').eq('status','published').in('source_post_id',mids).not('task_id','is',null),
-    db.from('tasks').select('id,external_url').eq('status','published').eq('show_in_heat',true).eq('source','weibo'),
+// The Weibo posts (numeric ids) a post's HTML links to.
+const listedPostIds=(html:string)=>[...new Set([...html.matchAll(/href="(https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/[^"]+)"/g)].map(m=>normalizeTaskLink(m[1])).filter(link=>link.startsWith('weibo:')).map(link=>link.slice('weibo:'.length)))];
+// Live 加热 tasks whose heat_targets include any of these post ids.
+async function liveHeatCovering(ids:string[]){
+  if(!ids.length)return [];
+  const {data,error}=await db.from('tasks').select('id,source,heat_targets').eq('status','published').eq('show_in_heat',true)
+    .or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`).overlaps('heat_targets',ids);
+  if(error)throw new Error('加热任务查重失败');
+  return (data??[]) as {id:string;source:string;heat_targets:string[]}[];
+}
+// A new collection replaces the live watcher-made 加热 tasks it fully covers: those whose every
+// target (heat_targets) is among its listed posts or itself -- a repost of a listed post, a task for
+// a listed post. An older collection with posts of its own stays. Tasks made before heat_targets
+// existed are matched the old way (their repost's original in weibo_ingest, or their own link).
+async function supersedeByCollection(collectionTaskId:string,covered:Set<string>){
+  const listed=[...covered];
+  const [overlapping,{data:reposts},{data:live}]=await Promise.all([
+    liveHeatCovering(listed),
+    db.from('weibo_ingest').select('task_id').eq('kind','heat').eq('status','published').in('source_post_id',listed).not('task_id','is',null),
+    db.from('tasks').select('id,external_url,heat_targets').eq('status','published').eq('show_in_heat',true).eq('source','weibo').is('heat_targets',null),
   ]);
-  const liveIds=new Set((live??[]).map(t=>t.id as string));
+  const legacy=new Map((live??[]).map(t=>[t.id as string,t.external_url as string]));
   const ids=new Set([
-    ...(reposts??[]).map(r=>r.task_id as string).filter(id=>liveIds.has(id)),
-    ...(live??[]).filter(t=>listed.has(normalizeTaskLink(t.external_url))).map(t=>t.id as string),
+    ...overlapping.filter(t=>t.source==='weibo'&&t.heat_targets.every(id=>covered.has(id))).map(t=>t.id),
+    ...(reposts??[]).map(r=>r.task_id as string).filter(id=>legacy.has(id)),
+    ...[...legacy].filter(([,url])=>{const link=normalizeTaskLink(url);return link.startsWith('weibo:')&&covered.has(link.slice('weibo:'.length))}).map(([id])=>id),
   ]);
   ids.delete(collectionTaskId);
   if(!ids.size)return 0;
@@ -326,7 +340,12 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
     if(await activeTaskWithLink(normalizeTaskLink(link),true))return skip('已存在相同链接的加热任务');
     // A repost of a post that is already on /heat (e.g. another 加热 account's own post) adds nothing.
     if(rt&&await activeTaskWithLink(normalizeTaskLink(postUrl(rt)),true))return skip('原帖已在加热列表');
-    // Nor does a repost of a post another account's live 加热 repost already points at: the first wins.
+    // What this post covers: a repost, the post it reposts; an original, the posts it lists and itself.
+    const listed=rt?[]:listedPostIds(post.longText??post.text);
+    const targets=rt?[rt.id]:[...new Set([...listed,post.id])];
+    // Nothing new if a live 加热 task already covers it: another account's repost of the same post
+    // (the first wins), or a collection that lists it. Older tasks are checked the old way.
+    if((await liveHeatCovering(rt?[rt.id]:[post.id])).length)return skip(rt?'同一原帖已有加热任务':'已在合集加热任务中');
     if(rt&&await liveHeatRepostOf(rt.id,post.id))return skip('同一原帖已有加热任务');
     const name=post.user?.screen_name||HEAT_ACCOUNTS[uid].name;
     const title=heatTitle(name,heat.kind);
@@ -334,11 +353,11 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
       title,description:heat.description||null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往博文，按要求加热',
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
       deadline:deadline.toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:heat.repost,heat_kind:heat.kind,
-      show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:post.id,
+      show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:post.id,heat_targets:targets,
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
     await finish({status:'published',title,task_id:task.id});
-    const superseded=rt?0:await supersedeByCollection(task.id,post.longText??post.text);
+    const superseded=listed.length?await supersedeByCollection(task.id,new Set(targets)):0;
     const rotated=await rotateHeat();
     return `已创建：${title}${superseded?`（合集替代下线 ${superseded} 条）`:''}${rotated?`（轮换下线 ${rotated} 条）`:''}`;
   }catch(error){
