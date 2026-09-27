@@ -523,11 +523,11 @@ async function backfillHeat(posts:Post[]){
 }
 
 // Brings live 加热 cards made before heat_targets existed up to the current rules, from their posts
-// (re-read by the backfill): records what each covers, lets each live collection take offline the
+// (re-read by the backfill): refreshes their title and description, records what each covers, lets each live collection take offline the
 // cards it fully covers, and among live reposts of the same post keeps only the earliest.
 async function repairLiveHeat(posts:Post[]){
   const now=new Date().toISOString();
-  const {data:live,error}=await db.from('tasks').select('id,source_post_id,heat_targets,created_at').eq('status','published').eq('show_in_heat',true).eq('source','weibo')
+  const {data:live,error}=await db.from('tasks').select('id,source_post_id,heat_targets,created_at,title,description,heat_kind').eq('status','published').eq('show_in_heat',true).eq('source','weibo')
     .or(`deadline.is.null,deadline.gt.${now}`).in('source_post_id',posts.map(post=>post.id));
   if(error)throw new Error(`读取加热任务失败：${error.message}`);
   const byPost=new Map(posts.map(post=>[post.id,post]));
@@ -535,7 +535,17 @@ async function repairLiveHeat(posts:Post[]){
     const post=byPost.get(task.source_post_id)!,rt=post.retweeted_status,listed=rt?[]:listedPostIds(post.longText??post.text);
     return {id:task.id as string,createdAt:task.created_at as string,rt:rt?.id??null,listed,targets:(task.heat_targets as string[]|null)??(rt?[rt.id]:[...new Set([...listed,post.id])]),missing:!task.heat_targets};
   });
-  let recorded=0,superseded=0,duplicates=0;
+  let recorded=0,superseded=0,duplicates=0,refreshed=0;
+  // Title and description as the current rules would write them (e.g. the 🔥 热搜 badge and topic
+  // line, added after some cards were made). The kind is left as it was, so the card doesn't move group.
+  for(const task of live??[]){
+    const post=byPost.get(task.source_post_id)!,heat=classifyHeat(post,ZIYU_UIDS,PERSONAL_UIDS);
+    if('skip' in heat||heat.kind!==task.heat_kind)continue;
+    const title=heatTitle(post.user?.screen_name||HEAT_ACCOUNTS[String(post.user?.id)]?.name||'',heat.kind,heat.trending),description=heat.description||null;
+    if(title===task.title&&description===task.description)continue;
+    const {error:refreshError}=await db.from('tasks').update({title,description}).eq('id',task.id);
+    if(!refreshError)refreshed++;
+  }
   for(const card of cards.filter(card=>card.missing)){
     const {error:updateError}=await db.from('tasks').update({heat_targets:card.targets}).eq('id',card.id);
     if(!updateError)recorded++;
@@ -554,7 +564,7 @@ async function repairLiveHeat(posts:Post[]){
     await db.from('tasks').update({status:'offline',is_pinned:false,updated_at:new Date().toISOString()}).eq('id',card.id);
     duplicates++;
   }
-  return {checked:cards.length,recorded,superseded,duplicates};
+  return {checked:cards.length,recorded,refreshed,superseded,duplicates};
 }
 
 async function backfillMedia(posts:Post[]){

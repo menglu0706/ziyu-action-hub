@@ -75,4 +75,4 @@ if(skipped){console.error(`监控已关闭（${skipped}），没有补任何任�
 for(const {post,account,outcome} of results)console.log(`${account}  ${post}  ${outcome}`);
 console.log(`完成：新建 ${results.filter(r=>r.outcome.startsWith('已创建')).length} 条加热任务 / 物料。`);
 // Live cards from before the current rules, brought up to date (see the watcher's repairLiveHeat).
-if(repair)console.log(`整理在线加热任务：检查 ${repair.checked} 条，补记覆盖 ${repair.recorded} 条，合集替代下线 ${repair.superseded} 条，重复转发下线 ${repair.duplicates} 条。`);
+if(repair)console.log(`整理在线加热任务：检查 ${repair.checked} 条，补记覆盖 ${repair.recorded} 条，更新标题 / 描述 ${repair.refreshed??0} 条，合集替代下线 ${repair.superseded} 条，重复转发下线 ${repair.duplicates} 条。`);
