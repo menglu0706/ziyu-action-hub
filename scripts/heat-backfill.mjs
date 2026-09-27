@@ -70,7 +70,9 @@ await attachShareCards(posts,new Set(Object.keys(HEAT_ACCOUNTS)));
 posts.sort((a,b)=>BigInt(a.id)<BigInt(b.id)?-1:1);
 const res=await fetch(WATCHER_URL,{method:'POST',headers:{'Content-Type':'application/json','x-watcher-key':env.WATCHER_KEY},body:JSON.stringify({mode:'backfill-heat',posts})});
 if(!res.ok){console.error(`Supabase 返回 HTTP ${res.status}`);process.exit(1)}
-const {results,skipped}=await res.json();
+const {results,skipped,repair}=await res.json();
 if(skipped){console.error(`监控已关闭（${skipped}），没有补任何任务。`);process.exit(1)}
 for(const {post,account,outcome} of results)console.log(`${account}  ${post}  ${outcome}`);
-console.log(`完成：新建 ${results.filter(r=>r.outcome.startsWith('已创建')).length} 条加热任务。`);
+console.log(`完成：新建 ${results.filter(r=>r.outcome.startsWith('已创建')).length} 条加热任务 / 物料。`);
+// Live cards from before the current rules, brought up to date (see the watcher's repairLiveHeat).
+if(repair)console.log(`整理在线加热任务：检查 ${repair.checked} 条，补记覆盖 ${repair.recorded} 条，合集替代下线 ${repair.superseded} 条，重复转发下线 ${repair.duplicates} 条。`);
