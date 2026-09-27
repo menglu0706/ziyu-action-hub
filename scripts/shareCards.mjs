@@ -137,7 +137,8 @@ export async function attachShareCards(posts,uids){
   if(!await loadLibs())return;
   let read=0;
   for(const mblog of posts){
-    if(!uids.has(String(mblog.user?.id))||mblog.retweeted_status||!mblog.pics?.length)continue;
+    // A share card is posted alone: a post with more than one image is something else.
+    if(!uids.has(String(mblog.user?.id))||mblog.retweeted_status||(mblog.pic_num??mblog.pics?.length??0)!==1)continue;
     if(Date.now()-new Date(mblog.created_at).getTime()>MAX_AGE_MS)continue;
     if(!cache.has(mblog.id)){
       if(read>=MAX_PER_SCAN)continue;
