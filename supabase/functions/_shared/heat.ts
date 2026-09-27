@@ -9,7 +9,7 @@ export const plain=(html:string)=>html.replace(/<a [^>]*href="[^"]*(?:sinaurl|\/
 export type HeatPost={text:string;longText?:string;retweeted_status?:{text:string;user?:{id:number|string}}};
 export type HeatKind='红膏'|'空瓶';
 export type HeatResult={kind:HeatKind;repost:boolean;trending:boolean;description:string}|{skip:string};
-// A 加热 call aimed at a trending topic (热搜 / rs): its card title gets a 热搜 badge.
+// A 红膏 call aimed at a trending topic (热搜 / rs): its card title gets a 热搜 badge (空瓶 never does).
 const TRENDING=/热搜|(?<![a-z])rs(?![a-z])/i;
 
 // 红膏 keywords: 梓渝's own names always count; the general words only when the post carries no
@@ -84,7 +84,7 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||targets.some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
   if(!positive&&!fight)return {skip:'没有梓渝关键词或加热指令'};
-  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),trending:TRENDING.test(own),description:withHeatNotice(heatText(html))};
+  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),trending:positive&&TRENDING.test(own),description:withHeatNotice(heatText(html))};
 }
 // Every 加热 task's description opens with this line.
 export const HEAT_NOTICE='先转发扩散再加热！！！';
