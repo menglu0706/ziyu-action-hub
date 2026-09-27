@@ -22,6 +22,8 @@ const othersHashtag=(text:string)=>(text.match(/#[^#\n]+#/g)??[]).some(tag=>!POS
 // words like 空腹 or 控制. So do links to specific comments (liking front-row comments is 控评).
 const KONG_MARKERS=/🈳|(?:无|🈚️?)前排|控评|控一下|空瓶|[速来去]空|空一下|空这/u;
 const linksComments=(html:string)=>/href="[^"]*(?:detailbulletincomment|comment_id)/.test(html);
+// A repost-count goal: 800转, 300🧱, 1k🧱, 万砖, 千转.
+const SPREAD_GOAL=/\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:转|🧱|砖)|[万千]\s*(?:转|砖)/gu;
 // A heading (the 【…】 title, else the first line) naming a guide or tutorial.
 const GUIDE_HEADING=/指南|教程|攻略|养号|🐏號|🐏号/u;
 // 星品 / 新宣 progress posts are a different kind of task, not 加热.
@@ -83,6 +85,9 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   const heading=own.match(/【[^】]*】/)?.[0]??own.split('\n').find(line=>line.trim())??'';
   if(GUIDE_HEADING.test(heading))return {skip:'教程 / 指南帖'};
   if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
+  // A call whose only instruction is a repost goal (800转, 300🧱, 万砖) wants the post spread, not 加热.
+  const withoutSpread=own.replace(SPREAD_GOAL,'');
+  if(withoutSpread!==own&&!HEAT_MARKERS.test(withoutSpread)&&!KONG_MARKERS.test(own)&&!linksComments(html))return {skip:'扩散任务（只要转发）'};
   const kong=KONG_MARKERS.test(own)||linksComments(html);
   const positiveWords=POSITIVE_KEYWORDS.test(own)||POSITIVE_WORDS.test(own)&&!othersHashtag(own);
   const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||targets.some(id=>ziyuUids.has(id)));
