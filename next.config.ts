@@ -5,6 +5,11 @@ const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
   : undefined;
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Tab switches reuse a page's client-side copy for this many seconds (Next's default is 300),
+    // so a home-screen app picks up new tasks soon after switching back to a tab.
+    staleTimes: { static: 30 },
+  },
   images: {
     remotePatterns: supabaseHostname
       ? [{ protocol: 'https', hostname: supabaseHostname, pathname: '/storage/v1/object/public/**' }]
