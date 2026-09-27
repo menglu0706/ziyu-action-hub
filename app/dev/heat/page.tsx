@@ -48,7 +48,7 @@ export default async function HeatPreview({searchParams}:{searchParams:Promise<{
     if(rt)repostedOriginals.set(rt.bid,post.bid);
     // Shift the window onto the real clock so the cards' countdowns read as they would have at asOf.
     const deadline=new Date(Date.now()+ends-asOf).toISOString();
-    const task:Task={id:post.id,title:heatTitle(post.user.screen_name,result.kind),platform:'微博',category:'其他',urgency:100,required:100,minutes:1,deadline,
+    const task:Task={id:post.id,title:heatTitle(post.user.screen_name,result.kind,result.trending),platform:'微博',category:'其他',urgency:100,required:100,minutes:1,deadline,
       createdAt:new Date(post.created_at).toISOString(),quick:'点击前往博文，按要求加热',description:result.description,recommendedCopy:'',url,pinned:false,urgent:false,
       heat:true,heatKind:result.kind,heatRepost:result.repost,daily:false,dailyGroup:'其他',urgentSortPosition:null,steps:[]};
     return {post,url,outcome:result.kind,task};

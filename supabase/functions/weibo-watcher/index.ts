@@ -348,7 +348,7 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
     if((await liveHeatCovering(rt?[rt.id]:[post.id])).length)return skip(rt?'同一原帖已有加热任务':'已在合集加热任务中');
     if(rt&&await liveHeatRepostOf(rt.id,post.id))return skip('同一原帖已有加热任务');
     const name=post.user?.screen_name||HEAT_ACCOUNTS[uid].name;
-    const title=heatTitle(name,heat.kind);
+    const title=heatTitle(name,heat.kind,heat.trending);
     const {data:task,error}=await db.from('tasks').insert({
       title,description:heat.description||null,category:'其他',platform:'微博',external_url:link,quick_instruction:'点击前往博文，按要求加热',
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',

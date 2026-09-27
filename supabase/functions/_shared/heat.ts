@@ -8,7 +8,9 @@ export const plain=(html:string)=>html.replace(/<a [^>]*href="[^"]*(?:sinaurl|\/
 
 export type HeatPost={text:string;longText?:string;retweeted_status?:{text:string;user?:{id:number|string}}};
 export type HeatKind='红膏'|'空瓶';
-export type HeatResult={kind:HeatKind;repost:boolean;description:string}|{skip:string};
+export type HeatResult={kind:HeatKind;repost:boolean;trending:boolean;description:string}|{skip:string};
+// A 加热 call aimed at a trending topic (热搜 / rs): its card title gets a 热搜 badge.
+const TRENDING=/热搜|(?<![a-z])rs(?![a-z])/i;
 
 // 红膏 keywords: 梓渝's own names always count; the general words only when the post carries no
 // one else's hashtag (a hashtag not about 梓渝), since fights push 热搜 too.
@@ -82,7 +84,7 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||targets.some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
   if(!positive&&!fight)return {skip:'没有梓渝关键词或加热指令'};
-  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),description:withHeatNotice(heatText(html))};
+  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),trending:TRENDING.test(own),description:withHeatNotice(heatText(html))};
 }
 // Every 加热 task's description opens with this line.
 export const HEAT_NOTICE='先转发扩散再加热！！！';
@@ -90,7 +92,9 @@ export const withHeatNotice=(description:string)=>description.includes(HEAT_NOTI
 // A 加热 description as the site shows it: the notice, then goalsOnly of the rest. The site applies
 // it on display, so tasks saved before a rule change read the same as new ones.
 export const heatDisplayText=(description:string)=>withHeatNotice(goalsOnly(description.replace(HEAT_NOTICE,'').trim()));
-export const heatTitle=(name:string,kind:HeatKind)=>`${name} ${kind==='红膏'?'红膏加热':'速来空瓶'}`;
+// Titles of trending calls end with HEAT_TRENDING_SUFFIX, which the 加热 card shows as a badge.
+export const HEAT_TRENDING_SUFFIX=' · 热搜';
+export const heatTitle=(name:string,kind:HeatKind,trending=false)=>`${name} ${kind==='红膏'?'红膏加热':'速来空瓶'}${trending?HEAT_TRENDING_SUFFIX:''}`;
 
 // How long a 加热 task stays up: 红膏 10 hours, 空瓶 6 (and tasks made in admin, which have no kind).
 export const HEAT_TTL_MS={红膏:10*3600e3,空瓶:6*3600e3,default:6*3600e3} as const;
