@@ -157,6 +157,7 @@ export function AdminPlaybook(){
         <li>后台首页 → 「微博监控」卡片 → 关闭右上角的<b>「自动发布」</b>开关，卡片显示「已关闭」。</li>
         <li>后台打不开时，用下方 SQL 暂停。</li>
       </Steps>
+      <div className="playbook-note"><b>只关闭加热页面</b>同一张卡片上的<b>「加热页面」</b>开关：关闭后导航里的「加热」消失，/heat 自动跳转到紧急页，监控也不再生成加热任务（紧急任务和打榜更新照常）。约 30 秒内对所有人生效。重新开启后，可用 <code>node scripts/heat-backfill.mjs</code> 补回关闭期间的加热任务。后台打不开时可用 SQL：<code>update public.site_settings set heat_enabled = false;</code></div>
       <Sql label="用 SQL 暂停" code="update public.weibo_watcher_settings set enabled = false;"/>
       <h3>重新开启</h3>
       <p>打开同一个开关（或把上面 SQL 的 <code>false</code> 改为 <code>true</code>）。</p>

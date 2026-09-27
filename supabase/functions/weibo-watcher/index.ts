@@ -286,7 +286,8 @@ const sameText=(a:string|null,b:string|null)=>(a??'').replace(/\s+/g,'')===(b??'
 async function handle(uid:string,post:Post,fromTopic=false){
   const update=UPDATE_ACCOUNTS[uid];
   if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))return handleUpdate(uid,post);
-  if(HEAT_ACCOUNTS[uid]){await handleHeat(uid,post);return null}
+  // With the 加热 page switched off in admin, 加热 accounts' posts are passed over (the backfill can add them later).
+  if(HEAT_ACCOUNTS[uid]){if(heatEnabled)await handleHeat(uid,post);return null}
   if(update)return null;
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
@@ -349,7 +350,16 @@ function postsFrom(feed:Feed|undefined):Post[]{
 type RelayBody={mode:'relay';feeds?:Record<string,Feed>;errors?:Record<string,string>};
 
 // One scan, from the feeds the home relay just read.
+// Whether the 加热 page is on (public.site_settings, set in admin); read at the start of each scan
+// and backfill. If the row can't be read (e.g. before migration 024), 加热 stays on.
+let heatEnabled=true;
+async function readHeatEnabled(){
+  const {data}=await db.from('site_settings').select('heat_enabled').maybeSingle();
+  heatEnabled=data?.heat_enabled??true;
+}
+
 async function relayScan(body:RelayBody,settings:{failing:boolean}){
+  await readHeatEnabled();
   const started=Date.now(),published:{postId:string;title:string;link:string}[]=[],failures:string[]=[];
   try{
     const {data:states}=await db.from('weibo_watch_state').select('uid,last_seen_id');
@@ -405,11 +415,13 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
 // scan), with the same rules, duplicate checks and rotation as a scan. Each task's time counts from
 // its post, so posts already past it are skipped; 打榜 update posts are left alone.
 async function backfillHeat(posts:Post[]){
+  await readHeatEnabled();
   const results:{post:string;account:string;outcome:string}[]=[];
   for(const post of posts){
     const uid=String(post.user?.id),update=UPDATE_ACCOUNTS[uid];
     const report=(outcome:string)=>results.push({post:post.bid??post.id,account:accountName(uid),outcome});
-    if(!HEAT_ACCOUNTS[uid])report('忽略：不是加热账号');
+    if(!heatEnabled)report('忽略：加热页面已关闭');
+    else if(!HEAT_ACCOUNTS[uid])report('忽略：不是加热账号');
     else if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))report('忽略：打榜任务更新（不补）');
     else report(await handleHeat(uid,post));
   }

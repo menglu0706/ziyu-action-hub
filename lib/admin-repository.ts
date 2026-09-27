@@ -6,7 +6,7 @@ export type AdminDashboardStats={todayVisits:number;currentUrgentTasks:number};
 export type AdminTopTaskClick={buttonKey:string;title:string|null;clickCount:number};
 export type AdminButtonClickStats={navClicks:Record<string,number>;topTaskClicks:AdminTopTaskClick[]};
 export type AdminWatcherItem={postId:string;uid:string;kind:string;status:string;reason:string|null;title:string|null;taskId:string|null;createdAt:string};
-export type AdminWatcherStatus={enabled:boolean;failing:boolean;lastScanAt:string|null;lastScanOk:boolean|null;lastError:string|null;lastOkAt:string|null;recent:AdminWatcherItem[]};
+export type AdminWatcherStatus={enabled:boolean;heatEnabled:boolean;failing:boolean;lastScanAt:string|null;lastScanOk:boolean|null;lastError:string|null;lastOkAt:string|null;recent:AdminWatcherItem[]};
 export type AdminInitialData={watcher?:AdminWatcherStatus|null;tasks:AdminTask[];activeUrgentTasks:AdminTask[];links:QuickLink[];templates:TextTemplate[];media:MediaRecord[];guides:GuideRecord[];visual:VisualSetting[];stats:AdminDashboardStats|null;buttonClicks:AdminButtonClickStats|null;error?:string};
 export type AdminDataScope='dashboard'|'task-new'|'tasks'|'links'|'templates'|'media'|'guides'|'visual'|'none';
 const urgencyLabel=(score:number)=>score>=90?'紧急':score>=70?'重要':score>=40?'普通':'低';
@@ -57,15 +57,16 @@ export async function getAdminInitialData(scope:AdminDataScope='tasks',client?:A
 
 // Weibo watcher status for the dashboard. Returns null (card hidden) until migration 017 exists.
 async function getWatcherStatus(db:Awaited<ReturnType<typeof createClient>>):Promise<AdminWatcherStatus|null>{
-  const [settings,last,lastOk,recent]=await Promise.all([
+  const [settings,last,lastOk,recent,site]=await Promise.all([
     db.from('weibo_watcher_settings').select('enabled,failing').maybeSingle(),
     db.from('weibo_scan_log').select('scanned_at,ok,error').order('scanned_at',{ascending:false}).limit(1).maybeSingle(),
     db.from('weibo_scan_log').select('scanned_at').eq('ok',true).order('scanned_at',{ascending:false}).limit(1).maybeSingle(),
-    db.from('weibo_ingest').select('post_id,uid,kind,status,reason,title,task_id,created_at').neq('status','skipped').order('created_at',{ascending:false}).limit(10)
+    db.from('weibo_ingest').select('post_id,uid,kind,status,reason,title,task_id,created_at').neq('status','skipped').order('created_at',{ascending:false}).limit(10),
+    db.from('site_settings').select('heat_enabled').maybeSingle()
   ]);
   if(settings.error||!settings.data)return null;
   return {
-    enabled:settings.data.enabled,failing:settings.data.failing,
+    enabled:settings.data.enabled,failing:settings.data.failing,heatEnabled:site.data?.heat_enabled??true,
     lastScanAt:last.data?.scanned_at??null,lastScanOk:last.data?.ok??null,lastError:last.data?.ok?null:last.data?.error??null,lastOkAt:lastOk.data?.scanned_at??null,
     recent:(recent.data??[]).map(r=>({postId:r.post_id,uid:r.uid,kind:r.kind,status:r.status,reason:r.reason,title:r.title,taskId:r.task_id,createdAt:r.created_at}))
   };

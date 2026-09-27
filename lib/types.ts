@@ -6,4 +6,5 @@ export type Guide={id:string;type:'tip'|'guide'|'faq';title:string;summary:strin
 export type QuickLink={id:string;title:string;platform:string;url:string;icon:string;sortOrder:number;enabled:boolean};
 export type TextTemplate={id:string;title:string;type:string;content:string;pinned:boolean;sortOrder:number;enabled:boolean};
 export type MediaItem={id:string;title:string;category:string;publishedAt:string;coverUrl:string;url:string;isNew:boolean;enabled:boolean};
+export type SiteSettings={heatEnabled:boolean};
 export type VisualSetting={id?:string;module:string;enabled:boolean;imageUrl:string;position:string;size:string;overlay:number;decorativeText:string;textEnabled:boolean};

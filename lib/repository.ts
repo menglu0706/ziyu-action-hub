@@ -2,7 +2,7 @@ import {unstable_cache} from 'next/cache';
 import {createPublicClient} from '@/lib/supabase/public';
 import {AUTO_TEXT_TASK_IDS} from './autoTasks';
 import {pickHeatTasks} from './heatList';
-import type {Category,DailyGroup,Guide,MediaItem,QuickLink,Task,TextTemplate,VisualSetting} from './types';
+import type {SiteSettings,Category,DailyGroup,Guide,MediaItem,QuickLink,Task,TextTemplate,VisualSetting} from './types';
 
 export class ContentDataError extends Error{constructor(){super('内容暂时无法加载，请稍后重试。')}}
 type TaskRow={id:string;title:string;description:string|null;recommended_copy:string|null;category:string;platform:string|null;external_url:string;quick_instruction:string;urgency_score:number;required_score:number;estimated_minutes:number;deadline:string|null;created_at:string;is_pinned:boolean;show_in_urgent:boolean;show_in_heat:boolean;heat_kind?:'红膏'|'空瓶'|null;heat_repost?:boolean;source?:string;show_in_daily:boolean;daily_group:DailyGroup;completion_mode:'one_time'|'daily';sort_order:number;urgent_sort_position:number|null;task_steps?:{step_number:number;content:string}[]};
@@ -46,7 +46,11 @@ const getCachedVisualSetting=unstable_cache(withFallback(async(module:string)=>{
 const getCachedQuickLinks=unstable_cache(withFallback(async()=>{const db=createPublicClient();const rows=await run(db.from('quick_links').select('*').eq('is_enabled',true).order('sort_order'));return ((rows??[]) as QuickLinkRow[]).map(r=>({id:r.id,title:r.title,platform:r.platform??'',url:r.external_url,icon:r.icon_key??'↗',sortOrder:r.sort_order,enabled:r.is_enabled}))},[] as QuickLink[]),['public-quick-links'],publicCacheOptions);
 const getCachedTemplates=unstable_cache(withFallback(async()=>{const db=createPublicClient();const rows=await run(db.from('text_templates').select('*').eq('is_enabled',true).order('is_pinned_today',{ascending:false}).order('sort_order'));return ((rows??[]) as TemplateRow[]).map(r=>({id:r.id,title:r.title,type:r.template_type,content:r.content,pinned:r.is_pinned_today,sortOrder:r.sort_order,enabled:r.is_enabled}))},[] as TextTemplate[]),['public-templates'],publicCacheOptions);
 
-export interface ActionHubRepository{getTasks():Promise<Task[]>;getUrgentTasks():Promise<Task[]>;getHeatTasks():Promise<Task[]>;getTask(id:string):Promise<Task|undefined>;getGuides():Promise<Guide[]>;getQuickLinks():Promise<QuickLink[]>;getTemplates():Promise<TextTemplate[]>;getMedia():Promise<MediaItem[]>;getVisualSetting(module:string):Promise<VisualSetting|undefined>}
+// Site-wide switches; if the table can't be read (e.g. before migration 024), everything stays on.
+export const SITE_SETTINGS_CACHE_TAG='public-site-settings';
+const getCachedSiteSettings=unstable_cache(withFallback(async():Promise<SiteSettings>=>{const db=createPublicClient();const row=await run(db.from('site_settings').select('heat_enabled').maybeSingle()) as {heat_enabled:boolean}|null;return {heatEnabled:row?.heat_enabled??true}},{heatEnabled:true} as SiteSettings),['public-site-settings'],{revalidate:30,tags:[SITE_SETTINGS_CACHE_TAG]});
+
+export interface ActionHubRepository{getTasks():Promise<Task[]>;getUrgentTasks():Promise<Task[]>;getHeatTasks():Promise<Task[]>;getTask(id:string):Promise<Task|undefined>;getGuides():Promise<Guide[]>;getQuickLinks():Promise<QuickLink[]>;getTemplates():Promise<TextTemplate[]>;getMedia():Promise<MediaItem[]>;getVisualSetting(module:string):Promise<VisualSetting|undefined>;getSiteSettings():Promise<SiteSettings>}
 export const repository:ActionHubRepository={
  getTasks:getCachedTasks,
  getUrgentTasks:getCachedUrgentTasks,
@@ -56,5 +60,6 @@ export const repository:ActionHubRepository={
  getQuickLinks:getCachedQuickLinks,
  getTemplates:getCachedTemplates,
  getMedia:getCachedMedia,
- getVisualSetting:getCachedVisualSetting
+ getVisualSetting:getCachedVisualSetting,
+ getSiteSettings:getCachedSiteSettings
 };

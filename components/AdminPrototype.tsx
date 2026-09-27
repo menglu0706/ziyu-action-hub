@@ -6,7 +6,7 @@ import {AdminCard,AdminShell,StatusTag,Toggle} from './AdminShell';
 import {ContentManager} from './ContentManager';
 import type {AdminInitialData,AdminWatcherStatus} from '@/lib/admin-repository';
 import type {AdminTask} from '@/lib/admin-mock';
-import {saveVisualSetting,setWatcherEnabled} from '@/app/admin/actions';
+import {saveVisualSetting,setHeatEnabled,setWatcherEnabled} from '@/app/admin/actions';
 import {ImageUpload} from './ImageUpload';
 
 const tone=(value:string):'blue'|'red'|'green'|'gold'|'purple'|'gray'=>value==='紧急'||value==='必做'||value==='下线'?'red':value==='音乐'||value==='上线'?'green':value==='重要'||value==='商务'?'gold':value==='数据'?'red':value==='草稿'?'gray':'blue';
@@ -32,7 +32,9 @@ function WatcherCard({watcher}:{watcher:AdminWatcherStatus}){
   // No recent scan means the home relay stopped sending, which is a different fix from failing scans.
   const state=!watcher.enabled?['已关闭','gray']:quiet?['夜间暂停','gray']:stale?['未在运行','red']:watcher.failing||watcher.lastScanOk===false?['扫描失败','red']:['运行中','green'];
   const toggle=(enabled:boolean)=>start(async()=>{const result=await setWatcherEnabled(enabled);setNotice(result.error??(enabled?'✓ 微博监控已开启':'✓ 微博监控已关闭'));router.refresh()});
-  return <AdminCard className="watcher-card"><div className="card-heading"><h2>微博监控 <StatusTag tone={state[1] as 'gray'|'red'|'green'}>{state[0]}</StatusTag></h2><Toggle label="自动发布" checked={watcher.enabled} onChange={value=>!pending&&toggle(value)}/></div>
+  // The whole 加热 page: nav tab, /heat, and the watcher's 加热 tasks.
+  const toggleHeat=(enabled:boolean)=>start(async()=>{const result=await setHeatEnabled(enabled);setNotice(result.error??(enabled?'✓ 加热页面已开启':'✓ 加热页面已关闭（导航隐藏，不再生成加热任务）'));router.refresh()});
+  return <AdminCard className="watcher-card"><div className="card-heading"><h2>微博监控 <StatusTag tone={state[1] as 'gray'|'red'|'green'}>{state[0]}</StatusTag></h2><div className="watcher-toggles"><Toggle label="自动发布" checked={watcher.enabled} onChange={value=>!pending&&toggle(value)}/><Toggle label="加热页面" checked={watcher.heatEnabled} onChange={value=>!pending&&toggleHeat(value)}/></div></div>
     <p className="muted watcher-meta">上次扫描：{ago(watcher.lastScanAt,hydrated)} · 上次成功：{ago(watcher.lastOkAt,hydrated)}</p>
     {watcher.lastError&&<p className="watcher-error">⚠️ {watcher.lastError}</p>}
     {watcher.recent.length===0?<p className="muted">最近没有发布或更新的任务</p>:watcher.recent.map(item=><div className="home-task" key={item.postId}><StatusTag tone={item.status==='published'?'green':item.status==='failed'?'red':'gray'}>{item.status==='published'?'已发布':item.status==='failed'?'失败':item.status==='processing'?'处理中':'跳过'}</StatusTag><div><b>{item.title??item.reason??'—'}</b><small>{WATCHED_NAMES[item.uid]??item.uid} · {WATCHER_KIND[item.kind]??item.kind} · {ago(item.createdAt,hydrated)}{item.status!=='published'&&item.reason&&item.title?` · ${item.reason}`:''}</small></div><a href={`https://m.weibo.cn/status/${item.postId}`} target="_blank" rel="noreferrer">原帖</a>{item.taskId&&<Link href={`/admin/tasks/new?edit=${item.taskId}`}>任务</Link>}</div>)}
