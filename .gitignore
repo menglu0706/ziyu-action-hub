@@ -46,3 +46,4 @@ supabase/.temp/
 # relay share-card libraries (scripts/package.json)
 /scripts/node_modules
 /scripts/package-lock.json
+/scripts/.ocr-cache/

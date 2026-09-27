@@ -7,6 +7,10 @@
 //   抖音:   a 抖音码 (not a QR code; only the 抖音 app can scan it). The card's text is read with OCR:
 //           @author and caption. Dedupe key: author + Beijing date (they post at most once a day).
 // Needs `npm install` in scripts/ (jsqr, jpeg-js, tesseract.js). Without it, cards are skipped.
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
 const UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 // Only posts this recent are examined; older ones were handled (or skipped) long ago.
 const MAX_AGE_MS=2*24*3600e3;
@@ -28,7 +32,12 @@ async function loadLibs(){
   return libs;
 }
 let worker;
-async function ocrWorker(){worker??=await libs.tesseract.createWorker('chi_sim');return worker}
+// The Chinese OCR data (~2.5 MB) is downloaded once and kept in scripts/.ocr-cache (git-ignored).
+const OCR_CACHE=path.join(path.dirname(fileURLToPath(import.meta.url)),'.ocr-cache');
+async function ocrWorker(){
+  if(!worker){fs.mkdirSync(OCR_CACHE,{recursive:true});worker=await libs.tesseract.createWorker('chi_sim',1,{cachePath:OCR_CACHE})}
+  return worker;
+}
 
 const fixText=text=>OCR_FIXES.reduce((s,[from,to])=>s.replace(from,to),text);
 // Chinese OCR text comes out with a space between every character; keep spaces only between Latin words.
