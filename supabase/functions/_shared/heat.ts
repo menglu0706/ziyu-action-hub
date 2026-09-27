@@ -51,10 +51,14 @@ export function heatText(html:string){
 }
 // When a text states a goal, only the phrases that carry one (the rest is commentary); otherwise
 // the text as is. Applying it twice changes nothing.
-export function goalsOnly(text:string){
-  const goals=text.split(/\n|(?<=[，。！？!?；;])/).map(part=>part.trim().replace(/[，；;]$/,'')).filter(part=>HEAT_GOAL.test(part));
-  return goals.length?goals.join('\n'):text;
+// With keepTags, a line made only of hashtags is kept too (the 🔥 热搜 cards' topic line).
+export function goalsOnly(text:string,keepTags=false){
+  const goals=text.split(/\n|(?<=[，。！？!?；;])/).map(part=>part.trim().replace(/[，；;]$/,'')).filter(part=>HEAT_GOAL.test(part)||keepTags&&TAG_LINE.test(part));
+  return goals.some(part=>HEAT_GOAL.test(part))?goals.join('\n'):text;
 }
+const TAG_LINE=/^(?:#[^#\n]+#\s*)+$/;
+// A trending 红膏 call's topics that `shown` doesn't already carry, as one line: "#话题A# #话题B#".
+const tagLine=(own:string,shown:string)=>[...new Set(own.match(/#[^#\n]+#/g)??[])].filter(tag=>!shown.includes(tag)).join(' ');
 
 // Whether a 加热 account's post becomes a 加热 task, and which kind. Only a repost, or an original
 // post that links to other posts, can be one, and never a 星品 post. Then, in this order:
@@ -84,14 +88,17 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||targets.some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
   if(!positive&&!fight)return {skip:'没有梓渝关键词或加热指令'};
-  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),trending:positive&&TRENDING.test(own),description:withHeatNotice(heatText(html))};
+  // Trending 红膏 calls (热搜 / rs) keep their hashtags above the goal: the topic is what gets pushed.
+  const trending=positive&&TRENDING.test(own);
+  const text=heatText(html);
+  return {kind:positive?'红膏':'空瓶',repost:Boolean(rt),trending,description:withHeatNotice([trending?tagLine(own,text):'',text].filter(Boolean).join('\n'))};
 }
 // Every 加热 task's description opens with this line.
 export const HEAT_NOTICE='先转发扩散再加热！！！';
 export const withHeatNotice=(description:string)=>description.includes(HEAT_NOTICE)?description:[HEAT_NOTICE,description.trim()].filter(Boolean).join('\n');
 // A 加热 description as the site shows it: the notice, then goalsOnly of the rest. The site applies
 // it on display, so tasks saved before a rule change read the same as new ones.
-export const heatDisplayText=(description:string)=>withHeatNotice(goalsOnly(description.replace(HEAT_NOTICE,'').trim()));
+export const heatDisplayText=(description:string,keepTags=false)=>withHeatNotice(goalsOnly(description.replace(HEAT_NOTICE,'').trim(),keepTags));
 // Titles of trending calls end with HEAT_TRENDING_SUFFIX, which the 加热 card shows as a badge.
 export const HEAT_TRENDING_SUFFIX=' · 热搜';
 export const heatTitle=(name:string,kind:HeatKind,trending=false)=>`${name} ${kind==='红膏'?'红膏加热':'速来空瓶'}${trending?HEAT_TRENDING_SUFFIX:''}`;
