@@ -40,7 +40,7 @@ const TASK_TTL_MS=24*3600e3;
 // Short brand names for 共创 co-creators, when cleaning the Weibo screen name isn't enough.
 const BRAND_NAMES:Record<string,string>={'7552817501':'有棵树'};
 const ACCOUNTS:Record<string,Rule>={
-  '8019758392':{name:WATCHED.urgent['8019758392'],reposts:true,media:false,
+  '8019758392':{name:WATCHED.urgent['8019758392'],reposts:false,media:false,
     title:p=>`重要通知：${p.sentence||'梓渝的小喇叭0706 发布了新微博'}`,description:()=>null},
   '7352202247':{name:WATCHED.urgent['7352202247'],reposts:true,media:true,
     title:p=>p.repost?'任务博来啦，快来zzp!':p.live?'宝梓直播啦快来！！！！':'宝梓营业啦，快快来！！百万转，百万评！',
