@@ -276,6 +276,28 @@ async function handleShareCard(uid:string,post:Post,card:ShareCard):Promise<stri
 
 // Takes offline the watcher-made 加热 tasks that /heat no longer shows (pickHeat: originals first,
 // newest first, at least 2 of each kind). Tasks made in admin are never rotated out.
+// A 加热 post that lists other posts (a collection) replaces the live 加热 tasks already covering
+// them: reposts of a listed post (weibo_ingest keeps a repost's original as source_post_id), and
+// tasks for a listed post itself. Those watcher-made tasks go offline; admin-made ones are kept.
+async function supersedeByCollection(collectionTaskId:string,html:string){
+  const listed=new Set([...html.matchAll(/href="(https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/[^"]+)"/g)].map(m=>normalizeTaskLink(m[1])).filter(link=>link.startsWith('weibo:')));
+  if(!listed.size)return 0;
+  const mids=[...listed].map(link=>link.slice('weibo:'.length));
+  const [{data:reposts},{data:live}]=await Promise.all([
+    db.from('weibo_ingest').select('task_id').eq('kind','heat').eq('status','published').in('source_post_id',mids).not('task_id','is',null),
+    db.from('tasks').select('id,external_url').eq('status','published').eq('show_in_heat',true).eq('source','weibo'),
+  ]);
+  const liveIds=new Set((live??[]).map(t=>t.id as string));
+  const ids=new Set([
+    ...(reposts??[]).map(r=>r.task_id as string).filter(id=>liveIds.has(id)),
+    ...(live??[]).filter(t=>listed.has(normalizeTaskLink(t.external_url))).map(t=>t.id as string),
+  ]);
+  ids.delete(collectionTaskId);
+  if(!ids.size)return 0;
+  await db.from('tasks').update({status:'offline',is_pinned:false,updated_at:new Date().toISOString()}).in('id',[...ids]);
+  return ids.size;
+}
+
 async function rotateHeat(){
   const {data,error}=await db.from('tasks').select('id,source,heat_kind,heat_repost,created_at').eq('status','published').eq('show_in_heat',true).or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`);
   if(error||!data)return 0;
@@ -316,8 +338,9 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
     await finish({status:'published',title,task_id:task.id});
+    const superseded=rt?0:await supersedeByCollection(task.id,post.longText??post.text);
     const rotated=await rotateHeat();
-    return `已创建：${title}${rotated?`（轮换下线 ${rotated} 条）`:''}`;
+    return `已创建：${title}${superseded?`（合集替代下线 ${superseded} 条）`:''}${rotated?`（轮换下线 ${rotated} 条）`:''}`;
   }catch(error){
     const reason=error instanceof Error?error.message:String(error);
     await finish({status:'failed',reason});
