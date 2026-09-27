@@ -15,10 +15,10 @@ export type HeatResult={kind:HeatKind;repost:boolean;description:string}|{skip:s
 const POSITIVE_KEYWORDS=/梓渝|yuni|芋泥/i;
 const POSITIVE_WORDS=/红膏|热搜|蓝v|公益|官号|正向|(?<![a-z])rs(?![a-z])/i;
 const othersHashtag=(text:string)=>(text.match(/#[^#\n]+#/g)??[]).some(tag=>!POSITIVE_KEYWORDS.test(tag));
-// 控评 / 空 instructions in a post's own text make it 空瓶, whatever else it says: 🈳, or 空 /
+// 控评 / 空 instructions in a post's own text make it 空瓶, whatever else it says: 🈳, 无前排 / 🈚前排 (not a bare 前排 or 前排🈶), or 空 /
 // 控 as an instruction (控评, 控一下, 空瓶, 速空, 来空, 去空, 空一下, 空这条) -- not inside ordinary
 // words like 空腹 or 控制. So do links to specific comments (liking front-row comments is 控评).
-const KONG_MARKERS=/🈳|控评|控一下|空瓶|[速来去]空|空一下|空这/u;
+const KONG_MARKERS=/🈳|(?:无|🈚️?)前排|控评|控一下|空瓶|[速来去]空|空一下|空这/u;
 const linksComments=(html:string)=>/href="[^"]*(?:detailbulletincomment|comment_id)/.test(html);
 // A heading (the 【…】 title, else the first line) naming a guide or tutorial.
 const GUIDE_HEADING=/指南|教程|攻略|养号|🐏號|🐏号/u;
