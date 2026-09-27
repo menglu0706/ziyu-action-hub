@@ -133,7 +133,7 @@ for(;;){
     // Back off only when the main feed is refused; a 超话 problem is reported but doesn't slow it down.
     failuresInRow=read.error?failuresInRow+1:0;
     const failed=Object.entries(errors).map(([uid,message])=>`${ACCOUNTS[uid]??"梓渝超话"}：${message}`).join('；');
-    console.log(`[${now()}] ${failed?`失败 - ${failed}`:`正常，新发布 ${result.published??0} 条`}`);
+    console.log(`[${now()}] ${failed?`失败 - ${failed}`:`正常，新发布 紧急 ${result.published??0} · 加热 ${result.heat??0} · 物料 ${result.media??0} · 打榜更新 ${result.updated??0}`}`);
   }catch(error){
     // Supabase unreachable (e.g. the PC just woke up): try again at the normal pace.
     console.log(`[${now()}] 无法连接 Supabase：${error.message}`);

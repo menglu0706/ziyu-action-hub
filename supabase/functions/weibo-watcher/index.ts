@@ -218,6 +218,7 @@ async function handleUpdate(uid:string,post:Post){
     if(updateError)throw new Error(`任务更新失败：${updateError.message}`);
     // The previous text is kept in the log, so an update can be undone by hand.
     await finish({status:'published',title:`更新：${task.title}`,task_id:task.id,reason:`原一句话最快做法：${previous}`});
+    scanCounts.updated++;
   }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
   return null; // task updates don't send WeChat alerts
 }
@@ -331,8 +332,8 @@ async function handle(uid:string,post:Post,fromTopic=false){
   if(update&&!post.retweeted_status&&update.keywords.test(plain(post.longText??post.text)))return handleUpdate(uid,post);
   // With the 加热 page switched off in admin, 加热 accounts' posts are passed over (the backfill can add them later).
   // A 小红书 / 抖音 share card is a /media item, never a 加热 task (and doesn't depend on the 加热 switch).
-  if(HEAT_ACCOUNTS[uid]&&post.shareCard){await handleShareCard(uid,post,post.shareCard);return null}
-  if(HEAT_ACCOUNTS[uid]){if(heatEnabled)await handleHeat(uid,post);return null}
+  if(HEAT_ACCOUNTS[uid]&&post.shareCard){if((await handleShareCard(uid,post,post.shareCard)).startsWith('已创建'))scanCounts.media++;return null}
+  if(HEAT_ACCOUNTS[uid]){if(heatEnabled&&(await handleHeat(uid,post)).startsWith('已创建'))scanCounts.heat++;return null}
   if(update)return null;
   const rule=ACCOUNTS[uid];
   const repost=Boolean(post.retweeted_status),src=post.retweeted_status??post;
@@ -398,6 +399,8 @@ type RelayBody={mode:'relay';feeds?:Record<string,Feed>;errors?:Record<string,st
 // Whether the 加热 page is on (public.site_settings, set in admin); read at the start of each scan
 // and backfill. If the row can't be read (e.g. before migration 024), 加热 stays on.
 let heatEnabled=true;
+// What the current scan created besides 紧急 tasks, for the relay's log line.
+let scanCounts={heat:0,media:0,updated:0};
 async function readHeatEnabled(){
   const {data}=await db.from('site_settings').select('heat_enabled').maybeSingle();
   heatEnabled=data?.heat_enabled??true;
@@ -406,6 +409,7 @@ async function readHeatEnabled(){
 async function relayScan(body:RelayBody,settings:{failing:boolean}){
   await readHeatEnabled();
   const started=Date.now(),published:{postId:string;title:string;link:string}[]=[],failures:string[]=[];
+  scanCounts={heat:0,media:0,updated:0};
   try{
     const {data:states}=await db.from('weibo_watch_state').select('uid,last_seen_id');
     const lastSeen=new Map((states??[]).map(s=>[s.uid,BigInt(s.last_seen_id)]));
@@ -451,7 +455,8 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
     await db.from('weibo_watcher_settings').update({failing:false}).eq('id',true);
     await alert('recovered','微博监控已恢复','扫描恢复正常。');
   }
-  return Response.json({ok:!failure,error:failure,published:published.length,ms:Date.now()-started});
+  // published: 紧急 tasks (the ones that send WeChat alerts); the rest are counted separately for the relay's log.
+  return Response.json({ok:!failure,error:failure,published:published.length,...scanCounts,ms:Date.now()-started});
 }
 
 // Adds /media items (no tasks, no pins) for specific posts the watcher missed, e.g. ones from before
