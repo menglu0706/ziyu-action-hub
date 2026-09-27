@@ -10,12 +10,12 @@ export type HeatPost={text:string;longText?:string;retweeted_status?:{text:strin
 export type HeatKind='红膏'|'空瓶';
 export type HeatResult={kind:HeatKind;repost:boolean;trending:boolean;description:string}|{skip:string};
 // A 红膏 call aimed at a trending topic (热搜 / rs): its card title gets a 热搜 badge (空瓶 never does).
-const TRENDING=/热搜|(?<![a-z])rs(?![a-z])/i;
+const TRENDING=/热搜|主榜|文娱榜|(?<![a-z])rs(?![a-z])/i;
 
 // 红膏 keywords: 梓渝's own names always count; the general words only when the post carries no
 // one else's hashtag (a hashtag not about 梓渝), since fights push 热搜 too.
 const POSITIVE_KEYWORDS=/梓渝|yuni|芋泥/i;
-const POSITIVE_WORDS=/红膏|热搜|蓝v|公益|官号|正向|(?<![a-z])rs(?![a-z])/i;
+const POSITIVE_WORDS=/红膏|热搜|主榜|文娱榜|蓝v|公益|官号|正向|(?<![a-z])rs(?![a-z])/i;
 const othersHashtag=(text:string)=>(text.match(/#[^#\n]+#/g)??[]).some(tag=>!POSITIVE_KEYWORDS.test(tag));
 // 控评 / 空 instructions in a post's own text make it 空瓶, whatever else it says: 🈳, 无前排 / 🈚前排 (not a bare 前排 or 前排🈶), or 空 /
 // 控 as an instruction (控评, 控一下, 空瓶, 速空, 来空, 去空, 空一下, 空这条) -- not inside ordinary
