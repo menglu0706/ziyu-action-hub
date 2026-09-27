@@ -20,6 +20,8 @@ const othersHashtag=(text:string)=>(text.match(/#[^#\n]+#/g)??[]).some(tag=>!POS
 // words like 空腹 or 控制. So do links to specific comments (liking front-row comments is 控评).
 const KONG_MARKERS=/🈳|前排|控评|控一下|空瓶|[速来去]空|空一下|空这/u;
 const linksComments=(html:string)=>/href="[^"]*(?:detailbulletincomment|comment_id)/.test(html);
+// A heading (the 【…】 title, else the first line) naming a guide or tutorial.
+const GUIDE_HEADING=/指南|教程|攻略|养号|🐏號|🐏号/u;
 // 星品 / 新宣 progress posts are a different kind of task, not 加热.
 const STAR_PRODUCT=/星品|新宣/u;
 // Other instructions that make a post a 加热 call on their own: 加热 / 加🔥, a goal (3k👍, 万赞, 千转,
@@ -71,6 +73,9 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   const targets=[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])];
   if(targets.length&&targets.every(id=>personalUids.has(id))&&!linksComments(html))return {skip:'目标是梓渝个人博（紧急任务已覆盖）'};
   const own=plain(html);
+  // Guides (e.g. 【发电站🐏號指南】 on building up accounts) teach, they don't call for 加热.
+  const heading=own.match(/【[^】]*】/)?.[0]??own.split('\n').find(line=>line.trim())??'';
+  if(GUIDE_HEADING.test(heading))return {skip:'教程 / 指南帖'};
   if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
   const kong=KONG_MARKERS.test(own)||linksComments(html);
   const positiveWords=POSITIVE_KEYWORDS.test(own)||POSITIVE_WORDS.test(own)&&!othersHashtag(own);
