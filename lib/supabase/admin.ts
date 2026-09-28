@@ -33,8 +33,11 @@ function assertAdminKey(key:string){
   throw new Error('SUPABASE_SERVICE_ROLE_KEY 配置错误：密钥格式无效');
 }
 
+// The key as saved on Vercel, without the spaces, line breaks or quotes a paste can bring along.
+const adminKey=()=>process.env.SUPABASE_SERVICE_ROLE_KEY?.trim().replace(/^["']|["']$/g,'');
+
 export function getAdminKeyType(){
-  const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key=adminKey();
   if(!key)return 'missing' as const;
   if(isModernSecretKey(key))return 'sb_secret' as const;
   if(legacyJwtRole(key)==='service_role')return 'legacy service_role' as const;
@@ -42,7 +45,7 @@ export function getAdminKeyType(){
 }
 
 export function createAdminClient(){
-  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=adminKey();
   if(!url||!key)throw new Error('后台账号管理未配置 SUPABASE_SERVICE_ROLE_KEY');
   assertAdminKey(key);
   return createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false,detectSessionInUrl:false}});

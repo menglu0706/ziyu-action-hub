@@ -30,8 +30,9 @@ const LIKE_PUSH_TARGETS=new Set(['7352202247','8009243499']); // 我是梓渝_, 
 const SPREAD_GOAL=/\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:转|🧱|砖)|[万千]\s*(?:转|砖)/gu;
 // A heading (the 【…】 title, else the first line) naming a guide or tutorial.
 const GUIDE_HEADING=/指南|教程|攻略|养号|🐏號|🐏号/u;
-// 星品 / 新宣 progress posts are a different kind of task, not 加热.
-const STAR_PRODUCT=/星品|新宣/u;
+// 星品 / 新宣 and 超like / 超来客 progress posts are a different kind of task, not 加热 -- also when
+// the post is only reposted with a comment ("要秒21评" on a 超like 播报).
+const STAR_PRODUCT=/星品|新宣|超like|超来客/iu;
 // 加速卡 (jsk) posts are about 打榜 speed-up cards, not 加热.
 const SPEED_CARD=/加速卡|(?<![a-z])jsk(?![a-z])/i;
 // Other instructions that make a post a 加热 call on their own: 加热 / 加🔥, a goal (3k👍, 万赞, 千转,
@@ -97,7 +98,7 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   // Guides (e.g. 【发电站🐏號指南】 on building up accounts) teach, they don't call for 加热.
   const heading=own.match(/【[^】]*】/)?.[0]??own.split('\n').find(line=>line.trim())??'';
   if(GUIDE_HEADING.test(heading))return {skip:'教程 / 指南帖'};
-  if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
+  if(STAR_PRODUCT.test(own)||rt&&STAR_PRODUCT.test(plain(rt.text))||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品 / 超like 任务'};
   if(SPEED_CARD.test(own))return {skip:'加速卡任务'};
   // A call whose only instruction is a repost goal (800转, 300🧱, 万砖) wants the post spread, not 加热.
   const withoutSpread=own.replace(SPREAD_GOAL,'');
