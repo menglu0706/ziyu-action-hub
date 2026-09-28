@@ -90,7 +90,7 @@ export function AdminPlaybook(){
         ['标题','「账号名 红膏加热」或「账号名 速来空瓶」。红膏且文字提到 热搜 / 主榜 / 文娱榜 / rs 的，标题后加 🔥 热搜 标记。'],
         ['描述','第一行固定「先转发扩散再加热！！！」；然后是加热账号自己的文字（到第一个链接为止），如果写了目标（🎯、3000👍、万赞…）只保留带目标的句子；🔥 热搜 卡片另起一行列出话题。显示时目标数橙色高亮，话题和 @ 蓝色，《作品名》加粗。'],
         ['链接','加热账号的这条微博本身。'],
-        ['有效期','从微博发布时间起：红膏 10 小时、空瓶 6 小时（后台可修改截止时间）；到点自动下线。'],
+        ['有效期','从微博发布时间起：红膏 10 小时、空瓶 6 小时（后台可修改截止时间）；到点自动下线。另外每天北京时间 3:00 所有在线加热任务（包括后台手动发布的）统一下线，加热页从空白开始新的一天。'],
       ]}/>
 
       <h3>第四步：去重、替代与轮换</h3>
@@ -275,7 +275,7 @@ export function AdminPlaybook(){
         <tr><td>Supabase 项目</td><td>ziyu-action-hub（东京 ap-northeast-1）</td></tr>
         <tr><td>读取程序</td><td>负责人家用电脑上的 <code>weibo-relay</code>（约每 3–4 分钟读取一次微博；负责人不在时见 <a href="#relay">⑧</a>）</td></tr>
         <tr><td>监控函数</td><td>Edge Functions → <code>weibo-watcher</code>（处理读取结果；日志也在这里）</td></tr>
-        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务，以及过了截止时间的加热任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）、<code>purge-old-auto-data</code>（每天 4:05 删除下线超过 30 天的自动任务和 60 天前的监控记录；后台手动发布的任务不会被删除）</td></tr>
+        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务，以及过了截止时间的加热任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）、<code>reset-heat-tasks</code>（每天 3:00 下线所有在线加热任务）、<code>purge-old-auto-data</code>（每天 4:05 删除下线超过 30 天的自动任务和 60 天前的监控记录；后台手动发布的任务不会被删除）</td></tr>
         <tr><td>密钥</td><td>保存在 Supabase，由负责人管理，<b>请勿修改或外传</b></td></tr>
         <tr><td>备用微博账号</td><td>由负责人保管；接手人提前向负责人要好登录方式，存放在团队约定的保管处</td></tr>
         <tr><td>监控账号<br/>（备用账号必须全部关注）</td><td><b>紧急任务：</b><AccountLinks accounts={WATCHED.urgent}/><br/><b>打榜更新：</b><AccountLinks accounts={WATCHED.update}/><br/><b>加热：</b><AccountLinks accounts={WATCHED.heat}/></td></tr>
