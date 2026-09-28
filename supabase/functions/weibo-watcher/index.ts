@@ -388,6 +388,7 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
       deadline:deadline.toISOString(),is_pinned:false,show_in_urgent:false,show_in_heat:true,heat_repost:heat.repost,heat_kind:heat.kind,
       show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:post.id,heat_targets:targets,
+      source_posted_at:new Date(post.created_at).toISOString(),
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
     await finish({status:'published',title,task_id:task.id});
