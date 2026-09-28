@@ -47,7 +47,7 @@ const ACCOUNTS:Record<string,Rule>={
     title:p=>p.repost?'任务博来啦，快来zzp!':p.live?'宝梓直播啦快来！！！！':'宝梓营业啦，快快来！！百万转，百万评！',
     description:p=>p.sentence||null},
   '8009243499':{name:WATCHED.urgent['8009243499'],reposts:false,media:true,
-    title:p=>p.sentence||'梓渝ZIYU工作室 发布了新微博',description:()=>null},
+    title:()=>'梓渝ZIYU工作室新物料来袭',description:p=>p.sentence||null},
 };
 // Accounts whose matching original posts rewrite an existing task's 一句话最快做法 instead of
 // creating tasks. Their other posts and reposts are ignored without a log entry. The relay
@@ -697,6 +697,20 @@ Deno.serve(async req=>{
     const since=new Date(Date.now()-36*3600e3).toISOString();
     const {data,error}=await db.from('tasks').select('id,title,source,status,is_pinned,urgent_sort_position,created_at,updated_at,deadline,auto_offline_at').eq('show_in_urgent',true).or(`status.eq.published,updated_at.gt.${since}`).order('is_pinned',{ascending:false}).order('urgent_sort_position',{ascending:true,nullsFirst:false});
     return Response.json(error?{error:error.message}:{tasks:data});
+  }
+  // Rewrites an urgent task's title and description with the current rules, from its post (after a
+  // title rule changes). Nothing else about the task changes.
+  if(body.mode==='urgent-refresh'){
+    const post=(body as {post?:Post}).post;
+    if(!post?.id)return Response.json({error:'缺少微博'},{status:400});
+    const {data:row}=await db.from('weibo_ingest').select('uid,kind,task_id').eq('post_id',post.id).in('kind',['original','repost','live','topic','cocreate']).maybeSingle();
+    const rule=row?ACCOUNTS[row.uid]:null;
+    if(!row?.task_id||!rule)return Response.json({error:'这条微博没有紧急任务'});
+    const p=parse(post),fromTopic=row.kind==='topic';
+    const title=p.cocreate?CO_TITLE:fromTopic?TOPIC_TITLE:rule.title(p);
+    const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:fromTopic?p.sentence||null:rule.description(p);
+    const {error}=await db.from('tasks').update({title,description,updated_at:new Date().toISOString()}).eq('id',row.task_id);
+    return Response.json(error?{error:error.message}:{title,description});
   }
   // Read-only: what the watcher recorded for specific posts, and the state of their tasks.
   if(body.mode==='post-status'){
