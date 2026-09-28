@@ -47,3 +47,6 @@ supabase/.temp/
 /scripts/node_modules
 /scripts/package-lock.json
 /scripts/.ocr-cache/
+
+# weibo-relay single-instance lock
+scripts/.relay.lock

@@ -33,6 +33,25 @@ function readEnv(){
   return values;
 }
 const env=readEnv();
+
+// Only one relay per PC: two would double the spare account's Weibo traffic. The running relay keeps
+// scripts/.relay.lock (its process id) fresh every minute; a new one exits if that process is alive
+// and the lock is fresh. A lock left by a crash or a stopped task is stale and simply taken over.
+const LOCK=path.join(path.dirname(fileURLToPath(import.meta.url)),'.relay.lock');
+function takeLock(){
+  try{
+    const pid=Number(fs.readFileSync(LOCK,'utf8'));
+    const fresh=Date.now()-fs.statSync(LOCK).mtimeMs<3*60_000;
+    let alive=false;try{process.kill(pid,0);alive=pid!==process.pid}catch{}
+    if(alive&&fresh){console.log(`已有一个 weibo-relay 在运行（进程 ${pid}），本次退出`);process.exit(0)}
+  }catch{}
+  fs.writeFileSync(LOCK,String(process.pid));
+  setInterval(()=>{try{const now=new Date();fs.utimesSync(LOCK,now,now)}catch{}},60_000);
+  const release=()=>{try{if(Number(fs.readFileSync(LOCK,'utf8'))===process.pid)fs.unlinkSync(LOCK)}catch{}};
+  process.on('exit',release);
+  for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>process.exit(0));
+}
+takeLock();
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const now=()=>new Date().toLocaleTimeString('zh-CN',{hour12:false});
 
