@@ -436,8 +436,18 @@ async function handle(uid:string,post:Post,fromTopic=false){
       auto_offline_at:new Date(Date.now()+TASK_TTL_MS).toISOString(),
     }).select('id').single();
     if(taskError||!task)throw new Error(`任务创建失败：${taskError?.message??''}`);
-    // One pinned slot: a pinning task takes it (the previous task stays on /urgent, unpinned).
-    if(pin)await db.from('tasks').update({is_pinned:false}).eq('is_pinned',true).neq('id',task.id);
+    // One pinned slot: a pinning task takes it, and whatever was pinned before (made in admin or not)
+    // goes to the top of the ongoing list, just under it. (The sort trigger alone would drop an
+    // admin-made task to the bottom, which is right for unpinning by hand, not for being displaced.)
+    if(pin){
+      const {data:displaced}=await db.from('tasks').update({is_pinned:false}).eq('is_pinned',true).neq('id',task.id).select('id');
+      if(displaced?.length){
+        const {data:first}=await db.from('tasks').select('urgent_sort_position').eq('status','published').eq('show_in_urgent',true).eq('is_pinned',false)
+          .not('urgent_sort_position','is',null).not('id','in',`(${displaced.map(t=>t.id).join(',')})`).order('urgent_sort_position',{ascending:true}).limit(1);
+        let position=Number(first?.[0]?.urgent_sort_position??1)-1;
+        for(const {id} of displaced)await db.from('tasks').update({urgent_sort_position:position--}).eq('id',id);
+      }
+    }
 
     let mediaId:string|null=null;
     // Only posts with photos, video or voice become media; text-only posts never do.
@@ -680,6 +690,13 @@ Deno.serve(async req=>{
     const listed=post.retweeted_status?[]:listedPostIds(post.longText??post.text);
     const replaced=listed.length?await supersedeOwnEarlier(row.uid,row.task_id,listed):0;
     return Response.json({restored:title,kind:heat.kind,deadline:deadline.toISOString(),replaced});
+  }
+  // Read-only: the live /urgent tasks in page order (pinned first, then urgent_sort_position), plus
+  // recently unpinned or expired watcher tasks, for checking ordering rules.
+  if(body.mode==='urgent-live'){
+    const since=new Date(Date.now()-36*3600e3).toISOString();
+    const {data,error}=await db.from('tasks').select('id,title,source,status,is_pinned,urgent_sort_position,created_at,updated_at,deadline,auto_offline_at').eq('show_in_urgent',true).or(`status.eq.published,updated_at.gt.${since}`).order('is_pinned',{ascending:false}).order('urgent_sort_position',{ascending:true,nullsFirst:false});
+    return Response.json(error?{error:error.message}:{tasks:data});
   }
   // Read-only: what the watcher recorded for specific posts, and the state of their tasks.
   if(body.mode==='post-status'){
