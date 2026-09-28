@@ -324,6 +324,22 @@ async function supersedeByCollection(collectionTaskId:string,covered:Set<string>
   return ids.size;
 }
 
+// A 加热 account posting again about the same post(s) is updating its call (a raised goal, a new
+// instruction): the newer original replaces the account's own earlier live cards whose linked posts
+// it all links too. Other accounts' cards are left alone.
+async function supersedeOwnEarlier(uid:string,taskId:string,listed:string[]){
+  const live=(await liveHeatCovering(listed)).filter(t=>t.source==='weibo'&&t.id!==taskId);
+  if(!live.length)return 0;
+  const {data:rows}=await db.from('weibo_ingest').select('task_id,post_id').eq('uid',uid).eq('kind','heat').in('task_id',live.map(t=>t.id));
+  const own=new Map((rows??[]).map(row=>[row.task_id as string,row.post_id as string]));
+  const covered=new Set(listed);
+  // An earlier card's targets are the posts it linked plus itself; the newer post needs to link all of the former.
+  const ids=live.filter(t=>own.has(t.id)&&t.heat_targets.filter(id=>id!==own.get(t.id)).every(id=>covered.has(id))).map(t=>t.id);
+  if(!ids.length)return 0;
+  await db.from('tasks').update({status:'offline',is_pinned:false,updated_at:new Date().toISOString()}).in('id',ids);
+  return ids.length;
+}
+
 async function rotateHeat(){
   const {data,error}=await db.from('tasks').select('id,source,heat_kind,heat_repost,created_at').eq('status','published').eq('show_in_heat',true).or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`);
   if(error||!data)return 0;
@@ -370,8 +386,9 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
     await finish({status:'published',title,task_id:task.id});
     const superseded=listed.length?await supersedeByCollection(task.id,new Set(targets)):0;
+    const replaced=listed.length?await supersedeOwnEarlier(uid,task.id,listed):0;
     const rotated=await rotateHeat();
-    return `已创建：${title}${superseded?`（合集替代下线 ${superseded} 条）`:''}${rotated?`（轮换下线 ${rotated} 条）`:''}`;
+    return `已创建：${title}${superseded?`（合集替代下线 ${superseded} 条）`:''}${replaced?`（替代同账号旧任务 ${replaced} 条）`:''}${rotated?`（轮换下线 ${rotated} 条）`:''}`;
   }catch(error){
     const reason=error instanceof Error?error.message:String(error);
     await finish({status:'failed',reason});
@@ -646,6 +663,40 @@ Deno.serve(async req=>{
   if(!settings.enabled)return Response.json({skipped:'disabled'});
   if(body.mode==='relay')return relayScan(body as RelayBody,settings);
   if(body.mode==='backfill-media')return backfillMedia((body as {posts?:Post[]}).posts??[]);
+  // Brings back a 加热 post's offline card under the current rules (kind, title, description, lifetime
+  // from the post), then applies same-account replacement. For fixing cards after a rule change.
+  if(body.mode==='heat-restore'){
+    const post=(body as {post?:Post}).post;
+    if(!post?.id)return Response.json({error:'缺少微博'},{status:400});
+    const {data:row}=await db.from('weibo_ingest').select('uid,task_id').eq('post_id',post.id).eq('kind','heat').maybeSingle();
+    if(!row?.task_id)return Response.json({error:'这条微博没有加热任务'});
+    const heat=classifyHeat(post,ZIYU_UIDS,PERSONAL_UIDS);
+    if('skip' in heat)return Response.json({error:`当前规则会跳过：${heat.skip}`});
+    const deadline=new Date(new Date(post.created_at).getTime()+heatTtl(heat.kind));
+    if(deadline.getTime()<=Date.now())return Response.json({error:`${heat.kind}已超过 ${heatTtl(heat.kind)/3600e3} 小时，不再上线`});
+    const title=heatTitle(post.user?.screen_name||HEAT_ACCOUNTS[row.uid]?.name||'',heat.kind,heat.trending);
+    const {error}=await db.from('tasks').update({status:'published',heat_kind:heat.kind,title,description:heat.description||null,deadline:deadline.toISOString(),updated_at:new Date().toISOString()}).eq('id',row.task_id);
+    if(error)return Response.json({error:error.message},{status:500});
+    const listed=post.retweeted_status?[]:listedPostIds(post.longText??post.text);
+    const replaced=listed.length?await supersedeOwnEarlier(row.uid,row.task_id,listed):0;
+    return Response.json({restored:title,kind:heat.kind,deadline:deadline.toISOString(),replaced});
+  }
+  // Read-only: what the watcher recorded for specific posts, and the state of their tasks.
+  if(body.mode==='post-status'){
+    const ids=((body as {post_ids?:string[]}).post_ids??[]).slice(0,20);
+    const {data:rows}=await db.from('weibo_ingest').select('post_id,uid,kind,status,reason,task_id,created_at').in('post_id',ids);
+    const taskIds=(rows??[]).map(row=>row.task_id).filter(Boolean);
+    const {data:tasks}=taskIds.length?await db.from('tasks').select('id,title,heat_kind,status,show_in_heat,deadline,updated_at').in('id',taskIds):{data:[]};
+    return Response.json({rows:(rows??[]).map(row=>({...row,task:(tasks??[]).find(t=>t.id===row.task_id)??null}))});
+  }
+  // Read-only: the live 加热 cards with the account and post each came from, for dry runs of rule changes.
+  if(body.mode==='heat-live'){
+    const {data:tasks,error}=await db.from('tasks').select('id,title,description,heat_kind,heat_repost,heat_targets,source,source_post_id,created_at,deadline').eq('status','published').eq('show_in_heat',true).or(`deadline.is.null,deadline.gt.${new Date().toISOString()}`);
+    if(error)return Response.json({error:error.message},{status:500});
+    const {data:rows}=await db.from('weibo_ingest').select('task_id,uid,post_id').eq('kind','heat').in('task_id',(tasks??[]).map(t=>t.id));
+    const origin=new Map((rows??[]).map(row=>[row.task_id,row]));
+    return Response.json({tasks:(tasks??[]).map(t=>({...t,uid:origin.get(t.id)?.uid??null,post_id:origin.get(t.id)?.post_id??null}))});
+  }
   if(body.mode==='backfill-heat')return backfillHeat((body as {posts?:Post[]}).posts??[]);
   // Retags every media item the watcher created (source_post_id set) with MEDIA_CATEGORY.
   if(body.mode==='retag-media'){
