@@ -11,7 +11,8 @@
 //   npx supabase functions deploy weibo-watcher --project-ref <ref> --no-verify-jwt --use-api
 import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
-import {classifyHeat,heatTitle,heatTtl,pickHeat,plain} from '../_shared/heat.ts';
+import {classifyHeat,heatTitle,heatTtl,pickHeat,plain,HEAT_NOTICE} from '../_shared/heat.ts';
+import {sendPush,type VapidKeys} from '../_shared/webpush.ts';
 import {DAILY_MUSIC_TASK_ID} from '../_shared/autoTasks.ts';
 // Which accounts are watched, and their names: one list for the watcher, relay, backfill and site.
 import WATCHED from '../_shared/accounts.json' with {type:'json'};
@@ -390,6 +391,9 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
     }).select('id').single();
     if(error||!task)throw new Error(`加热任务创建失败：${error?.message??''}`);
     await finish({status:'published',title,task_id:task.id});
+    // Fan notifications, sent once at the end of a relay scan (backfills never notify).
+    if(heat.kind==='红膏'&&heat.trending)fanNotes.trending.push({account:name,text:heat.description??''});
+    if(heat.kind==='空瓶')fanNotes.kong=true;
     const superseded=listed.length?await supersedeByCollection(task.id,new Set(targets)):0;
     const replaced=listed.length?await supersedeOwnEarlier(uid,task.id,listed):0;
     const rotated=await rotateHeat();
@@ -496,6 +500,49 @@ async function readHeatEnabled(){
   heatEnabled=data?.heat_enabled??true;
 }
 
+// --- Fan notifications (migration 027) --------------------------------------------------------
+// A new 🔥 热搜 红膏 card, or a 空瓶 surge (KONG_SURGE_COUNT new 空瓶 cards within 15 minutes, at most
+// one alert an hour), is recorded in site_notifications (the site shows it as an in-page alert) and
+// sent by Web Push to every subscribed browser. Nothing is sent in the quiet hours.
+const KONG_SURGE_COUNT=3,KONG_SURGE_WINDOW_MS=15*60_000,KONG_SURGE_COOLDOWN_MS=60*60_000;
+let fanNotes:{trending:{account:string;text:string}[];kong:boolean}={trending:[],kong:false};
+async function flushFanNotifications(){
+  const {trending,kong}=fanNotes;fanNotes={trending:[],kong:false};
+  if(!trending.length&&!kong)return;
+  if(quietWindow().quiet)return;
+  const notes:{kind:'heat_trending'|'kong_surge';title:string;body:string}[]=[];
+  if(trending.length){
+    // A card's text without the standard notice, on one line.
+    const text=(card:{text:string})=>card.text.replace(HEAT_NOTICE,'').replace(/\s+/g,' ').trim();
+    notes.push(trending.length===1
+      ?{kind:'heat_trending',title:`🔥 热搜加热｜${trending[0].account}`,body:text(trending[0]).slice(0,100)||'速来加热！'}
+      :{kind:'heat_trending',title:`🔥 ${trending.length} 个热搜加热任务`,body:trending.map(card=>`${card.account}：${text(card)}`).join('\n').slice(0,160)});
+  }
+  if(kong){
+    const {count}=await db.from('tasks').select('id',{count:'exact',head:true}).eq('source','weibo').eq('show_in_heat',true).eq('heat_kind','空瓶')
+      .gt('created_at',new Date(Date.now()-KONG_SURGE_WINDOW_MS).toISOString());
+    const {data:recent}=await db.from('site_notifications').select('id').eq('kind','kong_surge').gt('created_at',new Date(Date.now()-KONG_SURGE_COOLDOWN_MS).toISOString()).limit(1);
+    if((count??0)>=KONG_SURGE_COUNT&&!recent?.length)notes.push({kind:'kong_surge',title:'⚠️ 空瓶告急',body:`15 分钟内新增 ${count} 个空瓶任务，速来控评！`});
+  }
+  if(!notes.length)return;
+  await db.from('site_notifications').insert(notes.map(note=>({...note,url:'/heat'})));
+  await db.from('site_notifications').delete().lt('created_at',new Date(Date.now()-3*864e5).toISOString());
+  const vapid:VapidKeys={publicKey:Deno.env.get('VAPID_PUBLIC_KEY')??'',privateKey:Deno.env.get('VAPID_PRIVATE_KEY')??'',subject:'https://allforziyu.com'};
+  if(!vapid.publicKey||!vapid.privateKey)return;
+  const {data:subs}=await db.from('push_subscriptions').select('endpoint,p256dh,auth');
+  const gone:string[]=[];
+  for(const note of notes){
+    const payload={title:note.title,body:note.body,url:'/heat',tag:note.kind};
+    for(let i=0;i<(subs??[]).length;i+=20){
+      await Promise.all((subs??[]).slice(i,i+20).map(async sub=>{
+        try{const status=await sendPush(sub,payload,vapid,1800);if(status===404||status===410)gone.push(sub.endpoint)}catch{}
+      }));
+    }
+  }
+  // Browsers that unsubscribed or were uninstalled.
+  if(gone.length)await db.from('push_subscriptions').delete().in('endpoint',[...new Set(gone)]);
+}
+
 async function relayScan(body:RelayBody,settings:{failing:boolean}){
   await readHeatEnabled();
   const started=Date.now(),published:{postId:string;title:string;link:string}[]=[],failures:string[]=[];
@@ -526,6 +573,7 @@ async function relayScan(body:RelayBody,settings:{failing:boolean}){
     for(const {uid,post,fromTopic} of fresh){const result=await handle(uid,post,fromTopic);if(result)published.push(result)}
     for(const {key,newest} of advance)await db.from('weibo_watch_state').upsert({uid:key,last_seen_id:newest.toString(),updated_at:new Date().toISOString()});
   }catch(error){failures.push(error instanceof Error?error.message:String(error))}
+  try{await flushFanNotifications()}catch(error){console.error('粉丝提醒发送失败',error)}
   const failure=failures.length?failures.join('；'):null;
 
   await db.from('weibo_scan_log').insert({ok:!failure,error:failure,duration_ms:Date.now()-started});
@@ -726,6 +774,13 @@ Deno.serve(async req=>{
     const pinEndsAt=current?.is_pinned&&row.uid===STUDIO_UID?new Date(new Date(post.created_at).getTime()+STUDIO_PIN_MS).toISOString():null;
     const {error}=await db.from('tasks').update({title,description,...(offlineAt?{auto_offline_at:offlineAt}:{}),...(pinEndsAt?{pin_ends_at:pinEndsAt}:{}),updated_at:new Date().toISOString()}).eq('id',row.task_id);
     return Response.json(error?{error:error.message}:{title,description,auto_offline_at:offlineAt,pin_ends_at:pinEndsAt});
+  }
+  // Sends a test notification to every browser with 加热提醒 on (for checking delivery after setup).
+  if(body.mode==='push-test'){
+    const vapid:VapidKeys={publicKey:Deno.env.get('VAPID_PUBLIC_KEY')??'',privateKey:Deno.env.get('VAPID_PRIVATE_KEY')??'',subject:'https://allforziyu.com'};
+    const {data:subs}=await db.from('push_subscriptions').select('endpoint,p256dh,auth');
+    const results=await Promise.all((subs??[]).map(async sub=>{try{return {service:new URL(sub.endpoint).host,status:await sendPush(sub,{title:'🔔 加热提醒测试',body:'收到这条就说明加热提醒已开启。',url:'/heat',tag:'test'},vapid,600)}}catch(error){return {service:new URL(sub.endpoint).host,status:String(error)}}}));
+    return Response.json({subscriptions:results.length,results});
   }
   // Read-only: what the watcher recorded for specific posts, and the state of their tasks.
   if(body.mode==='post-status'){

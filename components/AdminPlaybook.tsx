@@ -112,6 +112,16 @@ export function AdminPlaybook(){
       <p>加热账号发的<b>只有一张图</b>的原创，如果图是<b>小红书二维码卡片</b>或<b>抖音分享卡片</b>，并且卡片或文字提到「我是梓渝 / 梓渝工作室 / 瑞鹤」，就在吸食页生成一条物料，不生成加热任务。小红书：识别二维码读取笔记，标题、内容、作者都是原文，链接直接打开笔记，同一篇笔记只生成一次。抖音：抖音码无法识别，读取卡片文字（@作者和文案），链接指向这条微博（保存图片后用抖音「扫一扫」打开）。文字识别不清楚时，标题改为「梓渝 抖音更新」这类固定标题，不显示乱码。<b>同一主体（梓渝 / 梓渝工作室 / 瑞鹤）同一天只生成一次</b>——不同加热账号转发的同一张卡片不会重复生成。</p>
     </section></AdminCard>
 
+    <AdminCard className="playbook-card"><section id="fan-alerts">
+      <h2>加热提醒（推送给粉丝）</h2>
+      <ul className="playbook-rules">
+        <li><b>什么时候提醒：</b>新出现 <b>🔥 热搜红膏</b> 加热卡片（同一次扫描的多条合并为一条）；或 <b>15 分钟内新增 3 个以上空瓶</b>（「⚠️ 空瓶告急」，之后 1 小时内不再重复）。北京时间 1:00–8:00 不提醒。</li>
+        <li><b>网站开着时：</b>所有设备都会在页面顶部弹出提示；电脑上网站在后台标签页时，允许通知的会收到系统通知。</li>
+        <li><b>网站关着时（推送）：</b>粉丝在 /heat 点「开启提醒」后可收到。iPhone 需要先「添加到主屏幕」并从主屏幕打开；电脑 Edge / Firefox 可用；安卓 Chrome 在中国大陆通常收不到（需要谷歌服务）；微信内置浏览器不支持。</li>
+        <li><b>测试：</b>请开发者发送测试推送（监控的 push-test），已开启提醒的设备会收到「🔔 加热提醒测试」。</li>
+      </ul>
+    </section></AdminCard>
+
     <AdminCard className="playbook-card"><section id="triage">
       <h2>快速判断</h2>
       <div className="table-scroll"><table className="admin-table playbook-table"><thead><tr><th>收到的提醒 / 看到的现象</th><th>最可能的原因</th><th>处理</th></tr></thead><tbody>
