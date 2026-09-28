@@ -40,6 +40,9 @@ const PRIORITY_UID='7352202247',PRIORITY_PIN_MS=6*3600e3;
 const TASK_TTL_MS=24*3600e3;
 // 共创 tasks stay up longer: a brand collaboration keeps being pushed for a week.
 const COCREATE_TTL_MS=7*24*3600e3;
+// A pinned 梓渝ZIYU工作室 task stays pinned until this long after its post (pin_ends_at; the 014
+// scheduler then unpins it, and it moves to the top of the ongoing list). The task itself stays up as usual.
+const STUDIO_UID='8009243499',STUDIO_PIN_MS=8*3600e3;
 // Short brand names for 共创 co-creators, when cleaning the Weibo screen name isn't enough.
 const BRAND_NAMES:Record<string,string>={'7552817501':'有棵树'};
 const ACCOUNTS:Record<string,Rule>={
@@ -429,13 +432,17 @@ async function handle(uid:string,post:Post,fromTopic=false){
     const title=p.cocreate?CO_TITLE:fromTopic?TOPIC_TITLE:rule.title(p);
     const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:fromTopic?p.sentence||null:rule.description(p);
     const quick=p.live?'点击进入直播间':repost?'前往原博完成任务':'点击前往原博：转发、评论、点赞';
-    const pin=await takesPin(uid);
+    // When the task goes offline: 共创 7 days after it's made, everything else 24 hours.
+    const offlineAt=Date.now()+(p.cocreate?COCREATE_TTL_MS:TASK_TTL_MS);
+    // A 工作室 post's pin ends 8 hours after the post; one already past that isn't pinned at all.
+    const pinEndsAt=uid===STUDIO_UID?new Date(post.created_at).getTime()+STUDIO_PIN_MS:null;
+    const pin=(pinEndsAt===null||pinEndsAt>Date.now())&&await takesPin(uid);
     // An unpinned insert lands at the top of the ongoing list (assign_new_urgent_sort_position).
     const {data:task,error:taskError}=await db.from('tasks').insert({
       title,description,category:p.cocreate?'商务':'其他',platform:'微博',external_url:link,quick_instruction:quick,
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
       is_pinned:pin,show_in_urgent:true,show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:src.id,
-      auto_offline_at:new Date(Date.now()+(p.cocreate?COCREATE_TTL_MS:TASK_TTL_MS)).toISOString(),
+      auto_offline_at:new Date(offlineAt).toISOString(),pin_ends_at:pin&&pinEndsAt?new Date(pinEndsAt).toISOString():null,
     }).select('id').single();
     if(taskError||!task)throw new Error(`任务创建失败：${taskError?.message??''}`);
     // One pinned slot: a pinning task takes it, and whatever was pinned before (made in admin or not)
@@ -711,8 +718,14 @@ Deno.serve(async req=>{
     const p=parse(post),fromTopic=row.kind==='topic';
     const title=p.cocreate?CO_TITLE:fromTopic?TOPIC_TITLE:rule.title(p);
     const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:fromTopic?p.sentence||null:rule.description(p);
-    const {error}=await db.from('tasks').update({title,description,updated_at:new Date().toISOString()}).eq('id',row.task_id);
-    return Response.json(error?{error:error.message}:{title,description});
+    // Expiry and pin end follow the current rules too: 共创 7 days after the task was made, others 24
+    // hours; a pinned 工作室 task unpins 8 hours after its post (the scheduler does it within a minute if past).
+    const {data:current}=await db.from('tasks').select('created_at,auto_offline_at,is_pinned').eq('id',row.task_id).single();
+    const madeAt=new Date(current?.created_at??Date.now()).getTime();
+    const offlineAt=current?.auto_offline_at?new Date(madeAt+(p.cocreate?COCREATE_TTL_MS:TASK_TTL_MS)).toISOString():null;
+    const pinEndsAt=current?.is_pinned&&row.uid===STUDIO_UID?new Date(new Date(post.created_at).getTime()+STUDIO_PIN_MS).toISOString():null;
+    const {error}=await db.from('tasks').update({title,description,...(offlineAt?{auto_offline_at:offlineAt}:{}),...(pinEndsAt?{pin_ends_at:pinEndsAt}:{}),updated_at:new Date().toISOString()}).eq('id',row.task_id);
+    return Response.json(error?{error:error.message}:{title,description,auto_offline_at:offlineAt,pin_ends_at:pinEndsAt});
   }
   // Read-only: what the watcher recorded for specific posts, and the state of their tasks.
   if(body.mode==='post-status'){
