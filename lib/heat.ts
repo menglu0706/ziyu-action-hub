@@ -28,6 +28,8 @@ const SPREAD_GOAL=/\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:转|🧱|砖)|[万千]\s*(
 const GUIDE_HEADING=/指南|教程|攻略|养号|🐏號|🐏号/u;
 // 星品 / 新宣 progress posts are a different kind of task, not 加热.
 const STAR_PRODUCT=/星品|新宣/u;
+// 加速卡 (jsk) posts are about 打榜 speed-up cards, not 加热.
+const SPEED_CARD=/加速卡|(?<![a-z])jsk(?![a-z])/i;
 // Other instructions that make a post a 加热 call on their own: 加热 / 加🔥, a goal (3k👍, 万赞, 千转,
 // 1k🧱) or a call to push (速来, 点…热门, 外显, 艾特智搜).
 const HEAT_MARKERS=/加热|[加➕]🔥|\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:👍|赞|转|评|🧱|🍎)|[万千]\s*(?:👍|赞|转|评)|速来|稳热门|点.{0,4}热门|外显|艾特智搜/u;
@@ -40,13 +42,17 @@ const linksPosts=(html:string)=>/href="https?:\/\/(?:m\.)?weibo\.(?:com|cn)\/(?:
 export const HEAT_GOAL=/\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:👍|赞|转|评|🧱|🍎)|[万千]\s*(?:👍|赞|转|评)|🎯/u;
 
 // A post's own text up to its first line with a link (to a post, comment or web page); hashtags
-// and @mentions are kept, as that is how 加热 accounts write their instructions. If it states a
-// goal, only the phrases carrying one are kept.
+// and @mentions are kept, as that is how 加热 accounts write their instructions. If that leaves
+// nothing (the instruction and its link share the first line), the text before the link is used.
+// If it states a goal, only the phrases carrying one are kept.
+const LINK=/<a [^>]*href="(?![^"]*containerid=231522)(?!\/n\/)[^"]*"/;
+const lineText=(html:string)=>plain(html).replace(/https?:\/\/\S+/g,'').replace(/[ \t]+/g,' ').trim();
 export function heatText(html:string){
   const lines:string[]=[];
   for(const line of html.split(/<br\s*\/?>/)){
-    if(/<a [^>]*href="(?![^"]*containerid=231522)(?!\/n\/)[^"]*"/.test(line))break;
-    const text=plain(line).replace(/https?:\/\/\S+/g,'').replace(/[ \t]+/g,' ').trim();
+    const link=line.search(LINK);
+    if(link>=0){if(!lines.some(Boolean))lines.push(lineText(line.slice(0,link)));break}
+    const text=lineText(line);
     if(text||lines.length)lines.push(text);
   }
   return goalsOnly(lines.join('\n').replace(/\n{3,}/g,'\n\n').trim()).slice(0,300);
@@ -85,6 +91,7 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   const heading=own.match(/【[^】]*】/)?.[0]??own.split('\n').find(line=>line.trim())??'';
   if(GUIDE_HEADING.test(heading))return {skip:'教程 / 指南帖'};
   if(STAR_PRODUCT.test(own)||/href="[^"]*\/c\/wbox/.test(html))return {skip:'星品任务'};
+  if(SPEED_CARD.test(own))return {skip:'加速卡任务'};
   // A call whose only instruction is a repost goal (800转, 300🧱, 万砖) wants the post spread, not 加热.
   const withoutSpread=own.replace(SPREAD_GOAL,'');
   if(withoutSpread!==own&&!HEAT_MARKERS.test(withoutSpread)&&!KONG_MARKERS.test(own)&&!linksComments(html))return {skip:'扩散任务（只要转发）'};

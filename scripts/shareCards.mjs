@@ -90,12 +90,13 @@ function prepare(image,left,top,right,bottom){
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=Math.round((gray[(y>>1)*w+(x>>1)]-lo)*255/span),o=(y*W+x)*4;out[o]=out[o+1]=out[o+2]=v;out[o+3]=255}
   return libs.jpeg.encode({data:out,width:W,height:H},92).data;
 }
+// The recognised lines' text; each line's OCR confidence (0-100) is kept in lines.confidence.
 async function ocrLines(image,box){
   const {data}=await (await ocrWorker()).recognize(prepare(image,...box),{},{blocks:true});
-  const lines=[];
+  const lines=[];lines.confidence=[];
   for(const block of data.blocks??[])for(const para of block.paragraphs)for(const line of para.lines){
     const text=fixText(squeeze(line.words.map(word=>word.text).join(' ')));
-    if(text)lines.push(text);
+    if(text){lines.push(text);lines.confidence.push(line.confidence??0)}
   }
   return lines;
 }
@@ -111,8 +112,11 @@ async function readDouyinCard(image){
   if(at<0)return null;
   const author=lines[at].replace(/^@/,'').replace(/[^\p{Script=Han}\p{L}\p{N}_-].*$/u,'');
   // Emoji often come through as a stray '#': collapse repeats and keep one space before each topic.
-  const caption=lines.slice(at+1).filter(line=>!/保存图片|扫一扫/.test(line)).join('').replace(/#{2,}/g,'#').replace(/\s*#/g,' #').replace(/\s+/g,' ').trim();
-  return {platform:'抖音',url:null,key:null,title:caption||null,desc:(caption.match(/#[^#\s]+/g)??[]).join(' ')||null,author:author||null,time:null};
+  const captionAt=lines.map((line,i)=>i).slice(at+1).filter(i=>!/保存图片|扫一扫/.test(lines[i]));
+  const caption=captionAt.map(i=>lines[i]).join('').replace(/#{2,}/g,'#').replace(/\s*#/g,' #').replace(/\s+/g,' ').trim();
+  // The caption's average OCR confidence; the watcher doesn't show a caption that read poorly.
+  const confidence=captionAt.length?Math.round(captionAt.reduce((sum,i)=>sum+lines.confidence[i],0)/captionAt.length):0;
+  return {platform:'抖音',url:null,key:null,title:caption||null,desc:(caption.match(/#[^#\s]+/g)??[]).join(' ')||null,author:author||null,time:null,confidence};
 }
 
 // The share card in a post's first image, or null.

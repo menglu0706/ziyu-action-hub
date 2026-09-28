@@ -24,7 +24,8 @@ type Post={
   // Added by the home relay (scripts/shareCards.mjs) for 小红书 / 抖音 share-card posts.
   shareCard?:ShareCard;
 };
-type ShareCard={platform:'小红书'|'抖音';url:string|null;key:string|null;title:string|null;desc:string|null;author:string|null;time:string|null};
+// confidence: the 抖音 caption's average OCR confidence (0-100); absent for 小红书 (read exactly).
+type ShareCard={platform:'小红书'|'抖音';url:string|null;key:string|null;title:string|null;desc:string|null;author:string|null;time:string|null;confidence?:number};
 type Parsed={post:Post;src:Post;repost:boolean;live:boolean;cocreate:boolean;brands:string[];sentence:string};
 type Rule={name:string;reposts:boolean;media:boolean;title:(p:Parsed)=>string;description:(p:Parsed)=>string|null};
 
@@ -238,9 +239,17 @@ async function liveHeatRepostOf(sourceId:string,exceptPostId:string){
 // Only cards about these three become media; everything else is ignored.
 const SHARE_SUBJECTS=/我是梓渝|梓渝工作室|瑞鹤/;
 const beijingDate=(iso:string)=>new Date(new Date(iso).getTime()+8*3600e3).toISOString().slice(0,10);
+// Which of the three a card is about, as one fixed name: the card's own text first, then the post's.
+// 抖音 cards are deduped by this rather than the OCR'd author, which reads differently on each copy.
+const shareSubject=(...texts:string[])=>{
+  for(const text of texts){if(/梓渝(?:ZIYU)?工作室/.test(text))return '梓渝工作室';if(/瑞鹤/.test(text))return '瑞鹤';if(/梓渝/.test(text))return '梓渝'}
+  return null;
+};
+// Below this OCR confidence a 抖音 caption is too garbled to show; the item gets a plain title instead.
+const MIN_CAPTION_CONFIDENCE=70;
 // A share card (read by the home relay) as a /media item: title from the card, content = author +
 // topics (+ the 小红书 note's content), cover = the card image. Deduped by share_key: the 小红书 note
-// id, or for 抖音 (whose code can't be read) the author + Beijing date -- they post at most once a day.
+// id, or for 抖音 (whose code can't be read) the subject + Beijing date -- they post at most once a day.
 async function handleShareCard(uid:string,post:Post,card:ShareCard):Promise<string>{
   const finish=(values:Record<string,unknown>)=>db.from('weibo_ingest').update(values).eq('post_id',post.id);
   const {data:claimed}=await db.from('weibo_ingest').insert({post_id:post.id,uid,source_post_id:card.key??post.id,kind:'share',status:'processing',posted_at:new Date(post.created_at).toISOString()}).select('post_id');
@@ -249,13 +258,16 @@ async function handleShareCard(uid:string,post:Post,card:ShareCard):Promise<stri
   try{
     const about=[card.author,card.title,card.desc,plain(post.longText??post.text)].join(' ');
     if(!SHARE_SUBJECTS.test(about))return skip(`${card.platform}分享卡片不涉及梓渝 / 工作室 / 瑞鹤`);
-    const key=card.key??(card.author?`dy:${card.author}:${beijingDate(post.created_at)}`:null);
-    if(!key)return skip(`${card.platform}分享卡片没有读出作者，无法去重`);
+    const subject=shareSubject([card.author,card.title,card.desc].filter(Boolean).join(' '),plain(post.longText??post.text));
+    const key=card.key??(subject?`dy:${subject}:${beijingDate(post.created_at)}`:null);
+    if(!key)return skip(`${card.platform}分享卡片没有读出主体，无法去重`);
     const {data:existing}=await db.from('media_items').select('id').eq('share_key',key).limit(1);
     if(existing?.length)return skip('同一条分享已生成物料');
     const link=card.url??postUrl(post);
-    const title=(card.title??firstSentence(post.text)??'').slice(0,80)||`${card.author??''} ${card.platform}更新`;
-    const description=[[card.author,card.desc].filter(Boolean).join(' · '),card.platform==='抖音'?'保存图片，用抖音「扫一扫」打开':null].filter(Boolean).join('\n')||null;
+    // A garbled 抖音 caption is replaced by a plain title, and its OCR'd author and topics are dropped.
+    const garbled=card.platform==='抖音'&&(card.confidence??0)<MIN_CAPTION_CONFIDENCE;
+    const title=garbled?`${subject} 抖音更新`:(card.title??firstSentence(post.text)??'').slice(0,80)||`${subject??card.author??''} ${card.platform}更新`;
+    const description=[garbled?subject:[card.author,card.desc].filter(Boolean).join(' · '),card.platform==='抖音'?'保存图片，用抖音「扫一扫」打开':null].filter(Boolean).join('\n')||null;
     const {data:media,error}=await db.from('media_items').insert({
       title,description,category:card.platform,published_at:card.time??new Date(post.created_at).toISOString(),
       cover_url:await copyCover(post),external_url:link,is_enabled:true,source_post_id:post.id,share_key:key,
