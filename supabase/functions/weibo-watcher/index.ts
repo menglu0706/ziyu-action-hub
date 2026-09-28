@@ -547,13 +547,22 @@ async function repairLiveHeat(posts:Post[]){
     const post=byPost.get(task.source_post_id)!,rt=post.retweeted_status,listed=rt?[]:listedPostIds(post.longText??post.text);
     return {id:task.id as string,createdAt:task.created_at as string,rt:rt?.id??null,listed,targets:(task.heat_targets as string[]|null)??(rt?[rt.id]:[...new Set([...listed,post.id])]),missing:!task.heat_targets};
   });
-  let recorded=0,superseded=0,duplicates=0,refreshed=0;
+  let recorded=0,superseded=0,duplicates=0,refreshed=0,reclassified=0;
   // Title and description as the current rules would write them (e.g. the 🔥 热搜 badge and topic
-  // line, added after some cards were made). The kind is left as it was, so the card doesn't move group.
+  // line, added after some cards were made). A card the current rules put in the other kind (after a
+  // rule change) moves group, and its lifetime is recounted from its post for the new kind; one
+  // already past that is taken offline.
   for(const task of live??[]){
     const post=byPost.get(task.source_post_id)!,heat=classifyHeat(post,ZIYU_UIDS,PERSONAL_UIDS);
-    if('skip' in heat||heat.kind!==task.heat_kind)continue;
+    if('skip' in heat)continue;
     const title=heatTitle(post.user?.screen_name||HEAT_ACCOUNTS[String(post.user?.id)]?.name||'',heat.kind,heat.trending),description=heat.description||null;
+    if(heat.kind!==task.heat_kind){
+      const deadline=new Date(new Date(post.created_at).getTime()+heatTtl(heat.kind));
+      const expired=deadline.getTime()<=Date.now();
+      const {error:moveError}=await db.from('tasks').update({heat_kind:heat.kind,title,description,deadline:deadline.toISOString(),...(expired?{status:'offline',is_pinned:false}:{}),updated_at:new Date().toISOString()}).eq('id',task.id);
+      if(!moveError)reclassified++;
+      continue;
+    }
     if(title===task.title&&description===task.description)continue;
     const {error:refreshError}=await db.from('tasks').update({title,description}).eq('id',task.id);
     if(!refreshError)refreshed++;
@@ -576,7 +585,7 @@ async function repairLiveHeat(posts:Post[]){
     await db.from('tasks').update({status:'offline',is_pinned:false,updated_at:new Date().toISOString()}).eq('id',card.id);
     duplicates++;
   }
-  return {checked:cards.length,recorded,refreshed,superseded,duplicates};
+  return {checked:cards.length,recorded,refreshed,reclassified,superseded,duplicates};
 }
 
 async function backfillMedia(posts:Post[]){

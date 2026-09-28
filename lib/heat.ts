@@ -22,6 +22,10 @@ const othersHashtag=(text:string)=>(text.match(/#[^#\n]+#/g)??[]).some(tag=>!POS
 // words like 空腹 or 控制. So do links to specific comments (liking front-row comments is 控评).
 const KONG_MARKERS=/🈳|(?:无|🈚️?)前排|控评|控一下|空瓶|[速来去]空|空一下|空这/u;
 const linksComments=(html:string)=>/href="[^"]*(?:detailbulletincomment|comment_id)/.test(html);
+// A like-push (点到3万, 上赞, 上👍) on a post it links directly by 我是梓渝_ or 梓渝ZIYU工作室 is 空瓶
+// too, even though those are 梓渝's own accounts.
+const LIKE_PUSH=/点到|上赞|上👍/u;
+const LIKE_PUSH_TARGETS=new Set(['7352202247','8009243499']); // 我是梓渝_, 梓渝ZIYU工作室
 // A repost-count goal: 800转, 300🧱, 1k🧱, 万砖, 千转.
 const SPREAD_GOAL=/\d+(?:\.\d+)?\s*[kKwW万千]?\s*(?:转|🧱|砖)|[万千]\s*(?:转|砖)/gu;
 // A heading (the 【…】 title, else the first line) naming a guide or tutorial.
@@ -70,7 +74,8 @@ const tagLine=(own:string,shown:string)=>[...new Set(own.match(/#[^#\n]+#/g)??[]
 
 // Whether a 加热 account's post becomes a 加热 task, and which kind. Only a repost, or an original
 // post that links to other posts, can be one, and never a 星品 post. Then, in this order:
-//   空瓶 (a fight, 控评 / 空): its own text has one of KONG_MARKERS, or it links to comments;
+//   空瓶 (a fight, 控评 / 空): its own text has one of KONG_MARKERS, or it links to comments, or it
+//     is a like-push (LIKE_PUSH) on a post it links directly by one of LIKE_PUSH_TARGETS;
 //   红膏 (broadcasting good news): it reposts or links a post by one of ziyuUids (梓渝's own accounts;
 //     no brands, which change), or its own text has one of HEAT_MARKERS together with a 红膏 keyword:
 //     POSITIVE_KEYWORDS, or POSITIVE_WORDS when it carries no one else's hashtag (a 梓渝 mention
@@ -79,14 +84,16 @@ const tagLine=(own:string,shown:string)=>[...new Set(own.match(/#[^#\n]+#/g)??[]
 //     reposted post's text doesn't count.
 // A repost of a repost (its text carries the "//@name:" chain) is ignored, as is anything else.
 // personalUids: 梓渝's personal account(s). A post whose every linked or reposted post is theirs is
-// skipped -- those posts already get a 紧急 task -- unless it also links comments (控评 is separate).
+// skipped -- those posts already get a 紧急 task -- unless it also links comments or is a like-push
+// (控评 and pushing likes are separate jobs).
 export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set<string>=new Set()):HeatResult{
   const html=post.longText??post.text,rt=post.retweeted_status;
   if(rt&&/\/\/\s*<a [^>]*>@|\/\/\s*@/.test(html))return {skip:'转发的转发'};
   if(!rt&&!linksPosts(html))return {skip:'原创但没有引用其他微博'};
   const targets=[...linkedAuthors(html),...(rt?[String(rt.user?.id)]:[])];
-  if(targets.length&&targets.every(id=>personalUids.has(id))&&!linksComments(html))return {skip:'目标是梓渝个人博（紧急任务已覆盖）'};
   const own=plain(html);
+  const likePush=LIKE_PUSH.test(own)&&linkedAuthors(html).some(id=>LIKE_PUSH_TARGETS.has(id));
+  if(targets.length&&targets.every(id=>personalUids.has(id))&&!linksComments(html)&&!likePush)return {skip:'目标是梓渝个人博（紧急任务已覆盖）'};
   // Guides (e.g. 【发电站🐏號指南】 on building up accounts) teach, they don't call for 加热.
   const heading=own.match(/【[^】]*】/)?.[0]??own.split('\n').find(line=>line.trim())??'';
   if(GUIDE_HEADING.test(heading))return {skip:'教程 / 指南帖'};
@@ -94,8 +101,8 @@ export function classifyHeat(post:HeatPost,ziyuUids:Set<string>,personalUids:Set
   if(SPEED_CARD.test(own))return {skip:'加速卡任务'};
   // A call whose only instruction is a repost goal (800转, 300🧱, 万砖) wants the post spread, not 加热.
   const withoutSpread=own.replace(SPREAD_GOAL,'');
-  if(withoutSpread!==own&&!HEAT_MARKERS.test(withoutSpread)&&!KONG_MARKERS.test(own)&&!linksComments(html))return {skip:'扩散任务（只要转发）'};
-  const kong=KONG_MARKERS.test(own)||linksComments(html);
+  if(withoutSpread!==own&&!HEAT_MARKERS.test(withoutSpread)&&!KONG_MARKERS.test(own)&&!linksComments(html)&&!likePush)return {skip:'扩散任务（只要转发）'};
+  const kong=KONG_MARKERS.test(own)||linksComments(html)||likePush;
   const positiveWords=POSITIVE_KEYWORDS.test(own)||POSITIVE_WORDS.test(own)&&!othersHashtag(own);
   const positive=!kong&&(positiveWords&&HEAT_MARKERS.test(own)||targets.some(id=>ziyuUids.has(id)));
   const fight=kong||!positive&&HEAT_MARKERS.test(own);
