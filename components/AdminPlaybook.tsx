@@ -49,14 +49,14 @@ export function AdminPlaybook(){
         <tr><td>加热账号（{Object.values(WATCHED.heat).join('、')}）</td><td colSpan={4}>转发和带其他微博链接的原创，按规则生成「红膏加热」或「速来空瓶」任务，详见 <a href="#heat-rules">加热匹配规则</a>。</td></tr>
         <tr><td><StatusTag tone="blue">分享卡片 → 物料</StatusTag></td><td colSpan={4}>加热账号发的小红书 / 抖音分享卡片在吸食页生成物料，不生成加热任务，详见 <a href="#heat-rules">加热匹配规则</a>。</td></tr>
         <tr><td><StatusTag tone="blue">加热任务</StatusTag></td><td colSpan={4}>只出现在 /heat，不置顶、不进 /urgent，不发微信提醒；有效期、去重、合集替代和轮换见 <a href="#heat-rules">加热匹配规则</a>。</td></tr>
-        <tr><td><StatusTag tone="blue">共创微博</StatusTag></td><td colSpan={4}>标题固定为「星品共创百万转百万评千万赞」，描述为「品牌名 星品 共创」（如「有棵树 星品 共创」），不生成物料。</td></tr>
+        <tr><td><StatusTag tone="blue">共创微博</StatusTag></td><td colSpan={4}>标题固定为「星品共创百万转百万评千万赞」，描述为「品牌名 星品 共创」（如「有棵树 星品 共创」），不生成物料，<b>有效期 7 天</b>（其他自动任务 24 小时）。</td></tr>
       </tbody></table></div>
       <div className="playbook-note"><b>基本规则</b>
         <ul className="playbook-rules">
           <li>同一条微博只处理一次；网站上已有相同链接的任务（包括手动添加的）时自动跳过——<b>手动任务优先</b>。</li>
           <li>网站同一时间只有一个置顶。新任务置顶后，上一个任务取消置顶但仍保留在 /urgent。</li>
           <li><b>「我是梓渝_」优先：</b>如果当前置顶是「我是梓渝_」发布不到 6 小时的微博，另外两个账号的新任务<b>不置顶</b>，而是出现在「进行中的任务」最上方。「我是梓渝_」的新微博始终置顶。</li>
-          <li><b>自动下线：</b>自动生成的任务在创建 24 小时后自动下线（每 5 分钟检查一次）。物料不受影响。手动重新上线后不会再次自动下线。</li>
+          <li><b>自动下线：</b>自动生成的任务在创建 24 小时后自动下线（<b>共创任务 7 天</b>；每 5 分钟检查一次）。物料不受影响。手动重新上线后不会再次自动下线。</li>
         </ul></div>
       <p><b>第一处查看位置：</b>后台首页的「微博监控」卡片——显示运行状态、上次扫描时间、最近错误，以及最近处理过的 10 条微博（带原帖和任务链接）。</p>
     </section></AdminCard>
@@ -174,7 +174,7 @@ export function AdminPlaybook(){
         <li>如果同一类微博反复出错，把<b>原帖链接</b>和<b>希望的标题/描述</b>发给负责人调整规则。</li>
       </Steps>
       <div className="playbook-note"><b>置顶被抢走？</b>网站只有一个置顶位。新微博会自动占用置顶（「我是梓渝_」6 小时内的置顶除外），原来的置顶任务取消置顶但保留在 /urgent。如需把某个任务重新置顶，编辑该任务打开「首页强制置顶」。</div>
-      <div className="playbook-note"><b>自动任务不见了？</b>自动生成的任务 24 小时后会自动下线。在「任务管理 → 已下线」中可以找到，需要的话点「上线」即可，之后不会再自动下线。</div>
+      <div className="playbook-note"><b>自动任务不见了？</b>自动生成的任务 24 小时后会自动下线（共创任务 7 天）。在「任务管理 → 已下线」中可以找到，需要的话点「上线」即可，之后不会再自动下线。</div>
     </Mode>
 
     <Mode id="missing" title="⑤ 该发布却没有发布" tag="先看卡片列表" tone="blue">

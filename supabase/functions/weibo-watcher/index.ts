@@ -38,6 +38,8 @@ const TOPIC_KEY='topic:梓渝超话',TOPIC_TITLE='宝梓超话营业啦，快来
 const PRIORITY_UID='7352202247',PRIORITY_PIN_MS=6*3600e3;
 // Auto tasks go offline this long after creation (migration 019's job does the switch).
 const TASK_TTL_MS=24*3600e3;
+// 共创 tasks stay up longer: a brand collaboration keeps being pushed for a week.
+const COCREATE_TTL_MS=7*24*3600e3;
 // Short brand names for 共创 co-creators, when cleaning the Weibo screen name isn't enough.
 const BRAND_NAMES:Record<string,string>={'7552817501':'有棵树'};
 const ACCOUNTS:Record<string,Rule>={
@@ -433,7 +435,7 @@ async function handle(uid:string,post:Post,fromTopic=false){
       title,description,category:p.cocreate?'商务':'其他',platform:'微博',external_url:link,quick_instruction:quick,
       urgency_score:100,required_score:100,estimated_minutes:1,audience:'所有人',status:'published',
       is_pinned:pin,show_in_urgent:true,show_in_daily:false,daily_group:'其他',source:'weibo',source_post_id:src.id,
-      auto_offline_at:new Date(Date.now()+TASK_TTL_MS).toISOString(),
+      auto_offline_at:new Date(Date.now()+(p.cocreate?COCREATE_TTL_MS:TASK_TTL_MS)).toISOString(),
     }).select('id').single();
     if(taskError||!task)throw new Error(`任务创建失败：${taskError?.message??''}`);
     // One pinned slot: a pinning task takes it, and whatever was pinned before (made in admin or not)
