@@ -39,6 +39,8 @@ const TOPIC_KEY='topic:梓渝超话',TOPIC_TITLE='宝梓超话营业啦，快来
 const PRIORITY_UID='7352202247',PRIORITY_PIN_MS=6*3600e3;
 // Auto tasks go offline this long after creation (migration 019's job does the switch).
 const TASK_TTL_MS=24*3600e3;
+// 任务博 (我是梓渝_'s reposts) go offline sooner.
+const REPOST_TTL_MS=6*3600e3;
 // 共创 tasks stay up longer: a brand collaboration keeps being pushed for a week.
 const COCREATE_TTL_MS=7*24*3600e3;
 // A pinned 梓渝ZIYU工作室 task stays pinned until this long after its post (pin_ends_at; the 014
@@ -439,8 +441,8 @@ async function handle(uid:string,post:Post,fromTopic=false){
     const title=p.cocreate?CO_TITLE:fromTopic?TOPIC_TITLE:rule.title(p);
     const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:fromTopic?p.sentence||null:rule.description(p);
     const quick=p.live?'点击进入直播间':repost?'点击前往梓渝的转发：转发、评论、点赞':'点击前往原博：转发、评论、点赞';
-    // When the task goes offline: 共创 7 days after it's made, everything else 24 hours.
-    const offlineAt=Date.now()+(p.cocreate?COCREATE_TTL_MS:TASK_TTL_MS);
+    // When the task goes offline: 共创 7 days after it's made, 任务博 (reposts) 6 hours, everything else 24 hours.
+    const offlineAt=Date.now()+(p.cocreate?COCREATE_TTL_MS:repost?REPOST_TTL_MS:TASK_TTL_MS);
     // A 工作室 post's pin ends 8 hours after the post; one already past that isn't pinned at all.
     const pinEndsAt=uid===STUDIO_UID?new Date(post.created_at).getTime()+STUDIO_PIN_MS:null;
     const pin=(pinEndsAt===null||pinEndsAt>Date.now())&&await takesPin(uid);
