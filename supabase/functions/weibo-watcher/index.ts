@@ -13,7 +13,7 @@ import {createClient} from 'npm:@supabase/supabase-js@2';
 import {normalizeTaskLink} from '../_shared/taskLink.ts';
 import {classifyHeat,heatTitle,heatTtl,pickHeat,plain,HEAT_NOTICE} from '../_shared/heat.ts';
 import {sendPush,type VapidKeys} from '../_shared/webpush.ts';
-import {DAILY_MUSIC_TASK_ID} from '../_shared/autoTasks.ts';
+import {DAILY_MUSIC_TASK_ID,PEAK_CHART_TASK_ID} from '../_shared/autoTasks.ts';
 // Which accounts are watched, and their names: one list for the watcher, relay, backfill and site.
 import WATCHED from '../_shared/accounts.json' with {type:'json'};
 
@@ -219,14 +219,24 @@ async function handleUpdate(uid:string,post:Post){
   try{
     const content=taskText(html,rule.keywords);
     if(!content){await finish({status:'skipped',reason:'微博没有可用的文字'});return null}
-    const {data:task,error}=await db.from('tasks').select('id,title,quick_instruction').eq('id',rule.taskId).maybeSingle();
-    if(error||!task)throw new Error('要更新的日常任务不存在，请检查监控设置');
-    if(sameText(task.quick_instruction,content)){await finish({status:'skipped',reason:'内容相同，无需更新',task_id:task.id});return null}
-    const previous=task.quick_instruction;
-    const {error:updateError}=await db.from('tasks').update({quick_instruction:content,updated_at:new Date().toISOString()}).eq('id',task.id);
-    if(updateError)throw new Error(`任务更新失败：${updateError.message}`);
-    // The previous text is kept in the log, so an update can be undone by hand.
-    await finish({status:'published',title:`更新：${task.title}`,task_id:task.id,reason:`原一句话最快做法：${previous}`});
+    const updated:string[]=[],previous:string[]=[];
+    // Rewrites one task's 一句话最快做法, keeping the old text for the log.
+    const rewrite=async(taskId:string,text:string)=>{
+      const {data:task,error}=await db.from('tasks').select('id,title,quick_instruction').eq('id',taskId).maybeSingle();
+      if(error||!task)throw new Error('要更新的日常任务不存在，请检查监控设置');
+      if(sameText(task.quick_instruction,text))return;
+      const {error:updateError}=await db.from('tasks').update({quick_instruction:text,updated_at:new Date().toISOString()}).eq('id',task.id);
+      if(updateError)throw new Error(`任务更新失败：${updateError.message}`);
+      updated.push(task.title);previous.push(`${task.title}：${task.quick_instruction}`);
+      return task.id as string;
+    };
+    const mainId=await rewrite(rule.taskId,content);
+    // The 巅峰(榜) item's songs go to the 巅峰榜（QQ音乐） task as 巅峰榜：《歌名》.
+    const songs=peakChartSongs(content);
+    if(songs.length)await rewrite(PEAK_CHART_TASK_ID,`巅峰榜：${songs.join('')}`);
+    if(!updated.length){await finish({status:'skipped',reason:'内容相同，无需更新',task_id:rule.taskId});return null}
+    // The previous texts are kept in the log, so an update can be undone by hand.
+    await finish({status:'published',title:`更新：${updated.join('、')}`,task_id:mainId??rule.taskId,reason:`原一句话最快做法：${previous.join('；')}`});
     scanCounts.updated++;
   }catch(error){await finish({status:'failed',reason:error instanceof Error?error.message:String(error)})}
   return null; // task updates don't send WeChat alerts
@@ -406,6 +416,14 @@ async function handleHeat(uid:string,post:Post):Promise<string>{
     await finish({status:'failed',reason});
     return `失败：${reason}`;
   }
+}
+// The songs (《…》) in a 打榜 list's 巅峰 / 巅峰榜 item: from 巅峰 to the next numbered item (1️⃣ …) or line.
+function peakChartSongs(content:string){
+  const start=content.search(/巅峰/);
+  if(start<0)return [];
+  const rest=content.slice(start),end=rest.slice(2).search(/\n|[0-9]️?⃣|🔟/);
+  const item=end<0?rest:rest.slice(0,end+2);
+  return [...new Set(item.match(/《[^》\n]+》/g)??[])];
 }
 const sameText=(a:string|null,b:string|null)=>(a??'').replace(/\s+/g,'')===(b??'').replace(/\s+/g,'');
 
