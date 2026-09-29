@@ -275,7 +275,7 @@ export function AdminPlaybook(){
         <tr><td>Supabase 项目</td><td>ziyu-action-hub（东京 ap-northeast-1）</td></tr>
         <tr><td>读取程序</td><td>负责人家用电脑上的 <code>weibo-relay</code>（约每 3–4 分钟读取一次微博；负责人不在时见 <a href="#relay">⑧</a>）</td></tr>
         <tr><td>监控函数</td><td>Edge Functions → <code>weibo-watcher</code>（处理读取结果；日志也在这里）</td></tr>
-        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务，以及过了截止时间的加热任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）、<code>reset-heat-tasks</code>（每天 3:00 删除所有加热任务，草稿和定时上线的除外）、<code>purge-old-auto-data</code>（每天 4:05 删除下线超过 30 天的自动任务和 60 天前的监控记录；后台手动发布的任务不会被删除）</td></tr>
+        <tr><td>定时任务</td><td><code>weibo-watcher</code>（每分钟检查是否收到扫描，超过 15 分钟没有则提醒）、<code>expire-auto-tasks</code>（每 5 分钟下线超过 24 小时的自动任务，以及过了截止时间的加热任务）、<code>purge-cron-history</code>（每天清理 7 天前的运行记录）、<code>signin-title-fudai</code> / <code>signin-title-normal</code>（每周三 0:00 把超话签到任务标题改成「福袋日❗️ 领福袋❗️ 日热度要第一❗️」，周四 0:00 改回「超话签到❗️ 四评两转维持超辣❗️」；中间在后台改的标题会被覆盖）、<code>reset-heat-tasks</code>（每天 3:00 删除所有加热任务，草稿和定时上线的除外）、<code>purge-old-auto-data</code>（每天 4:05 删除下线超过 30 天的自动任务和 60 天前的监控记录；后台手动发布的任务不会被删除）</td></tr>
         <tr><td>密钥</td><td>保存在 Supabase，由负责人管理，<b>请勿修改或外传</b></td></tr>
         <tr><td>备用微博账号</td><td>由负责人保管；接手人提前向负责人要好登录方式，存放在团队约定的保管处</td></tr>
         <tr><td>监控账号<br/>（备用账号必须全部关注）</td><td><b>紧急任务：</b><AccountLinks accounts={WATCHED.urgent}/><br/><b>打榜更新：</b><AccountLinks accounts={WATCHED.update}/><br/><b>加热：</b><AccountLinks accounts={WATCHED.heat}/></td></tr>
