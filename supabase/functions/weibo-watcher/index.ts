@@ -429,14 +429,16 @@ async function handle(uid:string,post:Post,fromTopic=false){
     if(uid===PRIORITY_UID&&!repost&&isRedPacket(post)){await finish({status:'skipped',reason:'系统生成的红包微博'});return null}
     const p=parse(post);
     const kind=p.cocreate?'cocreate':p.live?'live':fromTopic?'topic':repost?'repost':'original';
-    const link=postUrl(src);
+    // A repost's task opens the repost itself (梓渝's own post, e.g. 任务博来啦); duplicates are still
+    // judged by the original: one task per original post, and none when it already has a task.
+    const link=postUrl(repost?post:src);
     const {data:earlier}=await db.from('weibo_ingest').select('post_id').eq('source_post_id',src.id).eq('status','published').limit(1);
     if(earlier?.length){await finish({kind,status:'skipped',reason:'同一原帖已生成任务'});return null}
-    if(await activeTaskWithLink(normalizeTaskLink(link))){await finish({kind,status:'skipped',reason:'已存在相同链接的任务'});return null}
+    if(await activeTaskWithLink(normalizeTaskLink(link))||repost&&await activeTaskWithLink(normalizeTaskLink(postUrl(src)))){await finish({kind,status:'skipped',reason:'已存在相同链接的任务'});return null}
 
     const title=p.cocreate?CO_TITLE:fromTopic?TOPIC_TITLE:rule.title(p);
     const description=p.cocreate?`${p.brands.join('、')||rule.name} 星品 共创`:fromTopic?p.sentence||null:rule.description(p);
-    const quick=p.live?'点击进入直播间':repost?'前往原博完成任务':'点击前往原博：转发、评论、点赞';
+    const quick=p.live?'点击进入直播间':repost?'点击前往梓渝的转发：转发、评论、点赞':'点击前往原博：转发、评论、点赞';
     // When the task goes offline: 共创 7 days after it's made, everything else 24 hours.
     const offlineAt=Date.now()+(p.cocreate?COCREATE_TTL_MS:TASK_TTL_MS);
     // A 工作室 post's pin ends 8 hours after the post; one already past that isn't pinned at all.
