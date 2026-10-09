@@ -9,8 +9,9 @@ export const plain=(html:string)=>html.replace(/<a [^>]*href="[^"]*(?:sinaurl|\/
 export type HeatPost={text:string;longText?:string;retweeted_status?:{text:string;user?:{id:number|string}}};
 export type HeatKind='红膏'|'空瓶';
 export type HeatResult={kind:HeatKind;repost:boolean;trending:boolean;description:string}|{skip:string};
-// A 红膏 call aimed at a trending topic (热搜 / rs): its card title gets a 热搜 badge (空瓶 never does).
-const TRENDING=/热搜|主榜|文娱榜|(?<![a-z])rs(?![a-z])/i;
+// A 红膏 call aimed at a trending topic (热搜 / 上榜 / 上升 / 双榜 / 主榜 / 文娱榜 / rs): its card title gets a 热搜
+// badge and its 加热提醒 push goes out (空瓶 never does).
+const TRENDING=/热搜|上榜|上升|双榜|主榜|文娱榜|(?<![a-z])rs(?![a-z])/i;
 
 // 红膏 keywords: 梓渝's own names always count; the general words only when the post carries no
 // one else's hashtag (a hashtag not about 梓渝), since fights push 热搜 too.
