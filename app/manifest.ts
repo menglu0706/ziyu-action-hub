@@ -2,8 +2,8 @@ import type {MetadataRoute} from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: '小渝屿',
-    short_name: '小渝屿',
+    name: '渝NI屋',
+    short_name: '渝NI屋',
     description: '打开即行动的梓渝粉丝行动工具',
     start_url: '/urgent',
     scope: '/',
