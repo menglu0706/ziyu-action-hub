@@ -2,7 +2,7 @@ import {unstable_cache} from 'next/cache';
 import {createPublicClient} from '@/lib/supabase/public';
 import {AUTO_TEXT_TASK_IDS} from './autoTasks';
 import {pickHeatTasks} from './heatList';
-import type {SiteSettings,Category,DailyGroup,Guide,MediaItem,QuickLink,Task,TextTemplate,VisualSetting} from './types';
+import type {SiteSettings,Category,DailyGroup,Guide,MediaItem,Task,VisualSetting} from './types';
 
 export class ContentDataError extends Error{constructor(){super('内容暂时无法加载，请稍后重试。')}}
 type TaskRow={id:string;title:string;description:string|null;recommended_copy:string|null;category:string;platform:string|null;external_url:string;quick_instruction:string;urgency_score:number;required_score:number;estimated_minutes:number;deadline:string|null;created_at:string;source_posted_at?:string|null;is_pinned:boolean;show_in_urgent:boolean;show_in_heat:boolean;heat_kind?:'红膏'|'空瓶'|null;heat_repost?:boolean;source?:string;show_in_daily:boolean;daily_group:DailyGroup;completion_mode:'one_time'|'daily';sort_order:number;urgent_sort_position:number|null;task_steps?:{step_number:number;content:string}[]};
@@ -10,8 +10,6 @@ const mapTask=(row:TaskRow):Task=>({id:row.id,title:row.title,description:row.de
 type VisualSettingRow={id:string;module_key:string;use_custom_background:boolean;background_url:string|null;background_position:string;background_size:string;overlay_opacity:number|string;decorative_text:string|null;show_decorative_text:boolean};
 const mapVisualSetting=(row:VisualSettingRow):VisualSetting=>({id:row.id,module:row.module_key,enabled:row.use_custom_background,imageUrl:row.background_url??'',position:row.background_position,size:row.background_size,overlay:Number(row.overlay_opacity),decorativeText:row.decorative_text??'',textEnabled:row.show_decorative_text});
 type GuideRow={id:string;guide_type:'tip'|'guide'|'faq';title:string;summary:string|null;content:string;category:string|null;external_url?:string|null;button_label?:string|null};
-type QuickLinkRow={id:string;title:string;platform:string|null;external_url:string;icon_key:string|null;sort_order:number;is_enabled:boolean};
-type TemplateRow={id:string;title:string;template_type:string;content:string;is_pinned_today:boolean;sort_order:number;is_enabled:boolean};
 type MediaRow={id:string;title:string;description?:string|null;category:string;published_at:string;cover_url:string|null;external_url:string;is_new:boolean;is_enabled:boolean};
 async function run<T>(query:PromiseLike<{data:T|null;error:unknown}>){const {data,error}=await query;if(error)throw new ContentDataError();return data}
 // Under concurrent bursts, unstable_cache has no in-flight dedupe: every request that
@@ -43,22 +41,18 @@ function markNewestDay(items:MediaItem[]){const newest=items.reduce((max,item)=>
 const getCachedMedia=unstable_cache(withFallback(async()=>{const db=createPublicClient();const cutoff=new Date(Date.now()-MEDIA_EXPIRY_MS).toISOString();const rows=await run(db.from('media_items').select('*').eq('is_enabled',true).gte('published_at',cutoff).order('created_at',{ascending:false}));return markNewestDay(dedupeBy(((rows??[]) as MediaRow[]).map(r=>({id:r.id,title:r.title,description:r.description??'',category:r.category,publishedAt:r.published_at,coverUrl:r.cover_url??'',url:r.external_url,isNew:false,enabled:r.is_enabled})),mediaDedupeKey))},[] as MediaItem[]),['public-media'],publicCacheOptions);
 const getCachedVisualSetting=unstable_cache(withFallback(async(module:string)=>{const db=createPublicClient();const result=await run(db.from('visual_settings').select('*').eq('module_key',module).maybeSingle());const row=result as VisualSettingRow|null;return row?mapVisualSetting(row):undefined},undefined as VisualSetting|undefined),['public-visual-setting'],publicCacheOptions);
 
-const getCachedQuickLinks=unstable_cache(withFallback(async()=>{const db=createPublicClient();const rows=await run(db.from('quick_links').select('*').eq('is_enabled',true).order('sort_order'));return ((rows??[]) as QuickLinkRow[]).map(r=>({id:r.id,title:r.title,platform:r.platform??'',url:r.external_url,icon:r.icon_key??'↗',sortOrder:r.sort_order,enabled:r.is_enabled}))},[] as QuickLink[]),['public-quick-links'],publicCacheOptions);
-const getCachedTemplates=unstable_cache(withFallback(async()=>{const db=createPublicClient();const rows=await run(db.from('text_templates').select('*').eq('is_enabled',true).order('is_pinned_today',{ascending:false}).order('sort_order'));return ((rows??[]) as TemplateRow[]).map(r=>({id:r.id,title:r.title,type:r.template_type,content:r.content,pinned:r.is_pinned_today,sortOrder:r.sort_order,enabled:r.is_enabled}))},[] as TextTemplate[]),['public-templates'],publicCacheOptions);
 
 // Site-wide switches; if the table can't be read (e.g. before migration 024), everything stays on.
 export const SITE_SETTINGS_CACHE_TAG='public-site-settings';
 const getCachedSiteSettings=unstable_cache(withFallback(async():Promise<SiteSettings>=>{const db=createPublicClient();const row=await run(db.from('site_settings').select('heat_enabled').maybeSingle()) as {heat_enabled:boolean}|null;return {heatEnabled:row?.heat_enabled??true}},{heatEnabled:true} as SiteSettings),['public-site-settings'],{revalidate:30,tags:[SITE_SETTINGS_CACHE_TAG]});
 
-export interface ActionHubRepository{getTasks():Promise<Task[]>;getUrgentTasks():Promise<Task[]>;getHeatTasks():Promise<Task[]>;getTask(id:string):Promise<Task|undefined>;getGuides():Promise<Guide[]>;getQuickLinks():Promise<QuickLink[]>;getTemplates():Promise<TextTemplate[]>;getMedia():Promise<MediaItem[]>;getVisualSetting(module:string):Promise<VisualSetting|undefined>;getSiteSettings():Promise<SiteSettings>}
+export interface ActionHubRepository{getTasks():Promise<Task[]>;getUrgentTasks():Promise<Task[]>;getHeatTasks():Promise<Task[]>;getTask(id:string):Promise<Task|undefined>;getGuides():Promise<Guide[]>;getMedia():Promise<MediaItem[]>;getVisualSetting(module:string):Promise<VisualSetting|undefined>;getSiteSettings():Promise<SiteSettings>}
 export const repository:ActionHubRepository={
  getTasks:getCachedTasks,
  getUrgentTasks:getCachedUrgentTasks,
  getHeatTasks:getCachedHeatTasks,
  getTask:getCachedTask,
  getGuides:getCachedGuides,
- getQuickLinks:getCachedQuickLinks,
- getTemplates:getCachedTemplates,
  getMedia:getCachedMedia,
  getVisualSetting:getCachedVisualSetting,
  getSiteSettings:getCachedSiteSettings
