@@ -44,7 +44,7 @@ export async function getAdminInitialData(scope:AdminDataScope='tasks',client?:A
     links:(linksResult.data??[]).map(r=>({id:r.id,name:r.title,platform:r.platform??'',url:r.external_url,icon:r.icon_key??'↗',order:r.sort_order,enabled:r.is_enabled})),
     templates:(templatesResult.data??[]).map(r=>({id:r.id,title:r.title,type:r.template_type,body:r.content,pinned:r.is_pinned_today,order:r.sort_order,enabled:r.is_enabled})),
     media:(mediaResult.data??[]).map(r=>({id:r.id,title:r.title,category:r.category,date:r.published_at.slice(0,10),publishedAt:r.published_at,cover:r.cover_url??'',url:r.external_url,isNew:r.is_new,enabled:r.is_enabled})),
-    guides:(guidesResult.data??[]).map(r=>({id:r.id,title:r.title,summary:r.summary??'',body:r.content,category:r.category??'',guideType:r.guide_type as GuideRecord['guideType'],order:r.sort_order,status:statusLabel(r.status),rawStatus:r.status as GuideRecord['rawStatus']})),
+    guides:(guidesResult.data??[]).map(r=>({id:r.id,title:r.title,summary:r.summary??'',body:r.content,category:r.category??'',url:r.external_url??'',buttonLabel:r.button_label??'',guideType:r.guide_type as GuideRecord['guideType'],order:r.sort_order,status:statusLabel(r.status),rawStatus:r.status as GuideRecord['rawStatus']})),
     visual:(visualResult.data??[]).map(r=>({id:r.id,module:r.module_key,enabled:r.use_custom_background,imageUrl:r.background_url??'',position:r.background_position,size:r.background_size,overlay:Number(r.overlay_opacity),decorativeText:r.decorative_text??'',textEnabled:r.show_decorative_text})),
     stats:statsRow?{todayVisits:Number(statsRow.today_visits),currentUrgentTasks:Number(statsRow.current_urgent_tasks)}:null,
     buttonClicks:clickStats?{

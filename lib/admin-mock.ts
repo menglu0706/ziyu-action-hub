@@ -2,4 +2,4 @@ export type AdminTask={id:string|number;title:string;category:string;platform?:s
 export type QuickLink={id:string|number;name:string;platform:string;url:string;icon:string;order:number;enabled:boolean};
 export type TextTemplate={id:string|number;title:string;type:string;body:string;pinned:boolean;order:number;enabled:boolean};
 export type MediaRecord={id:string|number;title:string;category:string;date:string;publishedAt:string;cover:string;url:string;isNew:boolean;enabled:boolean};
-export type GuideRecord={id:string|number;title:string;summary:string;body:string;category:string;guideType:'tip'|'guide'|'faq';order:number;status:'上线'|'草稿'|'下线';rawStatus:'draft'|'published'|'offline'};
+export type GuideRecord={id:string|number;title:string;summary:string;body:string;category:string;url:string;buttonLabel:string;guideType:'tip'|'guide'|'faq';order:number;status:'上线'|'草稿'|'下线';rawStatus:'draft'|'published'|'offline'};
